@@ -52,6 +52,13 @@ the device's **Configuration** section:
   PM10, TVOC, VOC, and vape; and
 - low and high thresholds for every alarm metric.
 
+An alarm switch is on only when Protect has at least one non-null threshold.
+Setting a threshold automatically enables that alarm. Turning an alarm off
+clears both thresholds; enter a new low or high threshold to enable it again.
+The LED ring switch uses brightness zero for off and persistently restores the
+last non-zero brightness when switched back on. The brightness control remains
+available independently.
+
 Protect currently reports unset thresholds as `null`; their Home Assistant
 number entities therefore show `Unknown` until a value is configured. The
 opaque `alertInterval` and `readingInterval` fields are not exposed because

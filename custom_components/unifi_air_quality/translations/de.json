@@ -89,6 +89,7 @@
     },
     "switch": {
       "status_light": { "name": "Statusleuchte" },
+      "ring_led": { "name": "LED-Ring" },
       "activity_feedback": { "name": "Aktivitätsanzeige" },
       "night_mode": { "name": "Nachtmodus" },
       "vape_detection": { "name": "Vape-Erkennung" },

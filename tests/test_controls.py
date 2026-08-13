@@ -4,6 +4,9 @@ from datetime import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+from homeassistant.exceptions import HomeAssistantError
+
 from custom_components.unifi_air_quality.entity import nested_update, nested_value
 from custom_components.unifi_air_quality.models import AirQualityDevice, ProtectSnapshot
 from custom_components.unifi_air_quality.number import (
@@ -22,6 +25,7 @@ from custom_components.unifi_air_quality.select import (
 from custom_components.unifi_air_quality.switch import (
     SWITCH_DESCRIPTIONS,
     AirQualitySwitch,
+    RingLedSwitch,
 )
 from custom_components.unifi_air_quality.switch import (
     async_setup_entry as async_setup_switches,
@@ -52,6 +56,11 @@ def _device(*, connected: bool = True) -> AirQualityDevice:
                 "nightModeStartTime": "22:30",
                 "nightModeEndTime": "06:15",
                 "readingInterval": 15,
+                "aqiSettings": {
+                    "isEnabled": True,
+                    "lowThreshold": None,
+                    "highThreshold": None,
+                },
                 "co2Settings": {
                     "isEnabled": True,
                     "lowThreshold": 400,
@@ -71,6 +80,7 @@ def _coordinator(device: AirQualityDevice):
     coordinator.data = ProtectSnapshot("console", "Protect", "6.2", "1", (device,))
     coordinator.last_update_success = True
     coordinator.client.async_update_device = AsyncMock()
+    coordinator.config_entry = SimpleNamespace(options={})
     return coordinator
 
 
@@ -92,7 +102,7 @@ async def test_platforms_add_all_controls(hass) -> None:
     await async_setup_times(hass, entry, lambda entities: times.extend(entities))
 
     assert len(numbers) == len(NUMBER_DESCRIPTIONS) == 25
-    assert len(switches) == len(SWITCH_DESCRIPTIONS) == 15
+    assert len(switches) == len(SWITCH_DESCRIPTIONS) + 1 == 16
     assert len(selects) == 1
     assert len(times) == len(TIME_DESCRIPTIONS) == 2
 
@@ -113,6 +123,84 @@ async def test_switch_reads_and_writes() -> None:
     }
 
 
+async def test_alarm_state_follows_thresholds() -> None:
+    coordinator = _coordinator(_device())
+    inactive = AirQualitySwitch(
+        coordinator, "device-id", _description(SWITCH_DESCRIPTIONS, "aqi_alerts")
+    )
+    active = AirQualitySwitch(
+        coordinator, "device-id", _description(SWITCH_DESCRIPTIONS, "co2_alerts")
+    )
+
+    assert inactive.is_on is False
+    assert active.is_on is True
+    with pytest.raises(HomeAssistantError):
+        await inactive.async_turn_on()
+
+    await active.async_turn_off()
+    coordinator.client.async_update_device.assert_awaited_once_with(
+        "device-id",
+        {
+            "airQualitySettings": {
+                "co2Settings": {
+                    "isEnabled": False,
+                    "lowThreshold": None,
+                    "highThreshold": None,
+                }
+            }
+        },
+    )
+
+
+async def test_alarm_with_threshold_can_be_enabled() -> None:
+    coordinator = _coordinator(_device())
+    coordinator.data.devices[0].raw["airQualitySettings"]["co2Settings"][
+        "isEnabled"
+    ] = False
+    entity = AirQualitySwitch(
+        coordinator, "device-id", _description(SWITCH_DESCRIPTIONS, "co2_alerts")
+    )
+    assert entity.is_on is False
+    await entity.async_turn_on()
+    coordinator.client.async_update_device.assert_awaited_once_with(
+        "device-id",
+        {"airQualitySettings": {"co2Settings": {"isEnabled": True}}},
+    )
+
+
+async def test_ring_led_switch_restores_brightness() -> None:
+    coordinator = _coordinator(_device())
+    entity = RingLedSwitch(coordinator, "device-id")
+    assert entity.is_on is True
+
+    await entity.async_turn_off()
+    coordinator.data.devices[0].raw["airQualitySettings"]["ringLedBrightness"] = 0
+    assert entity.is_on is False
+    await entity.async_turn_on()
+
+    assert coordinator.client.async_update_device.await_args_list[0].args[1] == {
+        "airQualitySettings": {"ringLedBrightness": 0}
+    }
+    assert coordinator.client.async_update_device.await_args_list[1].args[1] == {
+        "airQualitySettings": {"ringLedBrightness": 80}
+    }
+    coordinator.hass.config_entries.async_update_entry.assert_called_once()
+
+
+async def test_ring_led_switch_restores_persisted_brightness_after_reload() -> None:
+    device = _device()
+    device.raw["airQualitySettings"]["ringLedBrightness"] = 0
+    coordinator = _coordinator(device)
+    coordinator.config_entry.options = {"ring_led_previous_brightness_device-id": 35}
+    entity = RingLedSwitch(coordinator, "device-id")
+
+    assert entity.is_on is False
+    await entity.async_turn_on()
+    coordinator.client.async_update_device.assert_awaited_once_with(
+        "device-id", {"airQualitySettings": {"ringLedBrightness": 35}}
+    )
+
+
 async def test_number_reads_and_writes_integer_and_float() -> None:
     coordinator = _coordinator(_device())
     entity = AirQualityNumber(
@@ -124,10 +212,14 @@ async def test_number_reads_and_writes_integer_and_float() -> None:
     await entity.async_set_native_value(1000.0)
     await entity.async_set_native_value(1000.5)
     assert coordinator.client.async_update_device.await_args_list[0].args[1] == {
-        "airQualitySettings": {"co2Settings": {"highThreshold": 1000}}
+        "airQualitySettings": {
+            "co2Settings": {"isEnabled": True, "highThreshold": 1000}
+        }
     }
     assert coordinator.client.async_update_device.await_args_list[1].args[1] == {
-        "airQualitySettings": {"co2Settings": {"highThreshold": 1000.5}}
+        "airQualitySettings": {
+            "co2Settings": {"isEnabled": True, "highThreshold": 1000.5}
+        }
     }
 
     missing = AirQualityNumber(

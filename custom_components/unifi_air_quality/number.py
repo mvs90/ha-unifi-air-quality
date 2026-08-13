@@ -29,6 +29,7 @@ class AirQualityNumberDescription(NumberEntityDescription):
     """Describe a writable numeric setting."""
 
     path: tuple[str, ...]
+    activates_alarm: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +121,7 @@ NUMBER_DESCRIPTIONS: tuple[AirQualityNumberDescription, ...] = (
                 metric.settings_key,
                 f"{bound}Threshold",
             ),
+            activates_alarm=True,
         )
         for metric in THRESHOLD_METRICS
         for bound in ("low", "high")
@@ -164,4 +166,19 @@ class AirQualityNumber(UnifiAirQualityEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         normalized: int | float = int(value) if value.is_integer() else value
+        if self.entity_description.activates_alarm:
+            settings_key = self.entity_description.path[-2]
+            threshold_key = self.entity_description.path[-1]
+            await self.coordinator.client.async_update_device(
+                self._device_id,
+                {
+                    "airQualitySettings": {
+                        settings_key: {
+                            "isEnabled": True,
+                            threshold_key: normalized,
+                        }
+                    }
+                },
+            )
+            return
         await self.async_write_value(self.entity_description.path, normalized)

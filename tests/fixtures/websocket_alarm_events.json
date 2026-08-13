@@ -1,0 +1,47 @@
+{
+  "extreme_started": {
+    "action": {
+      "action": "add",
+      "modelKey": "event",
+      "id": "anonymous-event-id",
+      "newUpdateId": "anonymous-update-2"
+    },
+    "data": {
+      "id": "anonymous-event-id",
+      "modelKey": "event",
+      "type": "sensorExtremeValues",
+      "start": 1700000000000,
+      "end": null,
+      "device": "anonymous-air-quality-id",
+      "metadata": {
+        "sensorType": { "text": "co2" },
+        "sensorValue": { "text": 1200 },
+        "status": { "text": "high" }
+      }
+    }
+  },
+  "extreme_ended": {
+    "action": {
+      "action": "update",
+      "modelKey": "event",
+      "id": "anonymous-event-id",
+      "newUpdateId": "anonymous-update-3"
+    },
+    "data": { "end": 1700000060000 }
+  },
+  "vape_started": {
+    "action": {
+      "action": "add",
+      "modelKey": "event",
+      "id": "anonymous-vape-event-id"
+    },
+    "data": {
+      "id": "anonymous-vape-event-id",
+      "modelKey": "event",
+      "type": "sensorVape",
+      "start": 1700000100000,
+      "end": null,
+      "device": "anonymous-air-quality-id"
+    }
+  }
+}

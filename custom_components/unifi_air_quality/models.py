@@ -7,6 +7,26 @@ from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
+class ProtectAlarm:
+    """An active Protect alarm without transport-specific identifiers."""
+
+    metric: str
+    status: str | None = None
+    value: int | float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProtectAlarmEvent:
+    """A normalized Protect alarm transition."""
+
+    device_id: str
+    metric: str
+    transition: str
+    status: str | None = None
+    value: int | float | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class AirQualityDevice:
     """A UP-AirQuality device and its latest private payload."""
 
@@ -16,6 +36,7 @@ class AirQualityDevice:
     firmware_version: str | None
     is_connected: bool
     raw: dict[str, Any]
+    active_alarms: tuple[ProtectAlarm, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

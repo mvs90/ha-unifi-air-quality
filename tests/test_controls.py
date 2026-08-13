@@ -138,6 +138,9 @@ async def test_switch_reads_and_writes() -> None:
         "ledSettings": {"isEnabled": True}
     }
 
+    coordinator.data.devices[0].raw["ledSettings"]["isEnabled"] = "invalid"
+    assert entity.is_on is None
+
 
 async def test_alarm_state_follows_thresholds() -> None:
     coordinator = _coordinator(_device())
@@ -235,6 +238,14 @@ async def test_ring_led_switch_restores_persisted_brightness_after_reload() -> N
     )
 
 
+@pytest.mark.parametrize("brightness", [True, "invalid", None])
+def test_ring_led_switch_rejects_invalid_brightness(brightness) -> None:
+    device = _device()
+    device.raw["airQualitySettings"]["ringLedBrightness"] = brightness
+    entity = RingLedSwitch(_coordinator(device), "device-id")
+    assert entity.is_on is None
+
+
 async def test_number_reads_and_writes_integer_and_float() -> None:
     coordinator = _coordinator(_device())
     entity = AirQualityNumber(
@@ -262,6 +273,14 @@ async def test_number_reads_and_writes_integer_and_float() -> None:
         _description(NUMBER_DESCRIPTIONS, "aqi_low_threshold"),
     )
     assert missing.native_value == 0
+
+    coordinator.data.devices[0].raw["airQualitySettings"]["ringLedBrightness"] = True
+    brightness = AirQualityNumber(
+        coordinator,
+        "device-id",
+        _description(NUMBER_DESCRIPTIONS, "ring_led_brightness"),
+    )
+    assert brightness.native_value is None
 
 
 async def test_vape_sensitivity_mirrors_firmware_coupled_threshold() -> None:
@@ -313,6 +332,8 @@ async def test_time_reads_writes_and_rejects_invalid_wire_value() -> None:
     coordinator.data.devices[0].raw["airQualitySettings"]["nightModeStartTime"] = (
         "invalid"
     )
+    assert entity.native_value is None
+    coordinator.data.devices[0].raw["airQualitySettings"]["nightModeStartTime"] = 42
     assert entity.native_value is None
 
 

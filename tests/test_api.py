@@ -36,6 +36,36 @@ def test_snapshot_recognizes_air_quality_payload_without_model() -> None:
 def test_snapshot_rejects_invalid_bootstrap() -> None:
     with pytest.raises(ProtectProtocolError):
         snapshot_from_bootstrap({"nvr": {}, "sensors": []})
+    with pytest.raises(ProtectProtocolError):
+        snapshot_from_bootstrap({"nvr": {"id": "console"}, "sensors": {}})
+
+
+def test_snapshot_skips_malformed_devices_and_uses_fallbacks() -> None:
+    snapshot = snapshot_from_bootstrap(
+        {
+            "nvr": {"mac": "console-mac", "name": 42, "version": 6},
+            "lastUpdateId": 5,
+            "sensors": [
+                None,
+                {"id": "regular", "type": "UP-Sense"},
+                {"id": None, "type": "UP-AirQuality"},
+                {
+                    "id": "air",
+                    "productModel": "UP Air-Quality",
+                    "name": "",
+                    "firmwareVersion": 4,
+                    "isConnected": False,
+                },
+            ],
+        }
+    )
+    assert snapshot.console_id == "console-mac"
+    assert snapshot.console_name == "Protect"
+    assert snapshot.protect_version is None
+    assert snapshot.last_update_id is None
+    assert snapshot.devices[0].name == "UP-AirQuality"
+    assert snapshot.devices[0].firmware_version is None
+    assert not snapshot.devices[0].is_connected
 
 
 def test_deep_merge_preserves_other_readings() -> None:
@@ -52,6 +82,7 @@ def test_host_for_url(host: str, expected: str) -> None:
     assert _host_for_url(host) == expected
 
 
-def test_host_for_url_rejects_url() -> None:
+@pytest.mark.parametrize("host", ["https://protect.local", "", "protect/local"])
+def test_host_for_url_rejects_url(host) -> None:
     with pytest.raises(ProtectProtocolError):
-        _host_for_url("https://protect.local")
+        _host_for_url(host)

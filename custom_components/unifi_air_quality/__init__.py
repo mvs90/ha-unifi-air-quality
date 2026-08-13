@@ -21,6 +21,8 @@ from .const import CONF_VERIFY_SSL, DOMAIN, MANUFACTURER
 from .coordinator import UnifiAirQualityCoordinator
 
 PLATFORMS = [
+    Platform.BINARY_SENSOR,
+    Platform.EVENT,
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
@@ -67,8 +69,8 @@ async def async_setup_entry(
             sw_version=device.firmware_version,
         )
 
-    client.start_websocket()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    client.start_websocket()
     return True
 
 

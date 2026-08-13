@@ -42,7 +42,6 @@
       "ring_led_brightness": { "name": "LED-Ring-Helligkeit" },
       "night_mode_brightness": { "name": "Nachtmodus-Helligkeit" },
       "vape_sensitivity": { "name": "Vape-Empfindlichkeit" },
-      "reading_interval": { "name": "Messintervall" },
       "aqi_low_threshold": { "name": "AQI-Untergrenze" },
       "aqi_high_threshold": { "name": "AQI-Obergrenze" },
       "co2_low_threshold": { "name": "Kohlendioxid-Untergrenze" },

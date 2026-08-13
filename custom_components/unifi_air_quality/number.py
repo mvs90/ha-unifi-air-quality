@@ -15,7 +15,6 @@ from homeassistant.const import (
     UnitOfDensity,
     UnitOfRatio,
     UnitOfTemperature,
-    UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -104,18 +103,6 @@ NUMBER_DESCRIPTIONS: tuple[AirQualityNumberDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         mode=NumberMode.SLIDER,
         path=("airQualitySettings", "vapeSensitivitySettings", "sensitivity"),
-    ),
-    AirQualityNumberDescription(
-        key="reading_interval",
-        translation_key="reading_interval",
-        icon="mdi:timer-refresh-outline",
-        entity_category=EntityCategory.CONFIG,
-        native_min_value=1,
-        native_max_value=300,
-        native_step=1,
-        native_unit_of_measurement=UnitOfTime.SECONDS,
-        mode=NumberMode.BOX,
-        path=("airQualitySettings", "readingInterval"),
     ),
     *(
         AirQualityNumberDescription(

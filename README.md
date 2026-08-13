@@ -20,7 +20,7 @@ Version `0.3.0` can:
 - register each sensor in the Home Assistant device registry;
 - expose eleven measurement entities with native Home Assistant device and
   state classes; and
-- configure LEDs, night mode, vape sensitivity, sampling, and per-metric
+- configure LEDs, night mode, vape sensitivity, and per-metric
   alarms directly from Home Assistant; and
 - export field-preserving, anonymized raw sensor data through Home Assistant
   diagnostics.
@@ -47,15 +47,15 @@ the device's **Configuration** section:
 
 - status light, activity feedback, LED ring brightness, and LED ring metric;
 - night mode, brightness, start time, and end time;
-- reading interval, vape detection, and vape sensitivity;
+- vape detection and vape sensitivity;
 - alarm enable switches for AQI, CO2, humidity, temperature, PM1, PM2.5, PM4,
   PM10, TVOC, VOC, and vape; and
 - low and high thresholds for every alarm metric.
 
 Protect currently reports unset thresholds as `null`; their Home Assistant
 number entities therefore show `Unknown` until a value is configured. The
-opaque `alertInterval` field is not exposed because Protect provides neither a
-unit nor a supported range for it.
+opaque `alertInterval` and `readingInterval` fields are not exposed because
+Protect provides neither documented units nor supported ranges for them.
 
 ## Installation
 

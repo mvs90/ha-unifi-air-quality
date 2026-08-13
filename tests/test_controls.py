@@ -91,7 +91,7 @@ async def test_platforms_add_all_controls(hass) -> None:
     await async_setup_selects(hass, entry, lambda entities: selects.extend(entities))
     await async_setup_times(hass, entry, lambda entities: times.extend(entities))
 
-    assert len(numbers) == len(NUMBER_DESCRIPTIONS) == 26
+    assert len(numbers) == len(NUMBER_DESCRIPTIONS) == 25
     assert len(switches) == len(SWITCH_DESCRIPTIONS) == 15
     assert len(selects) == 1
     assert len(times) == len(TIME_DESCRIPTIONS) == 2

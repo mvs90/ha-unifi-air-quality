@@ -50,7 +50,8 @@ the device's **Configuration** section:
 - vape detection and vape sensitivity;
 - alarm enable switches for AQI, CO2, humidity, temperature, PM1, PM2.5, PM4,
   PM10, TVOC, VOC, and vape; and
-- low and high thresholds for every alarm metric.
+- supported low and high thresholds for every alarm metric. Protect fixes the
+  vape lower threshold at zero, so only its writable high threshold is shown.
 
 An alarm switch is on only when Protect has at least one non-null threshold.
 Setting a threshold automatically enables that alarm. Turning an alarm off
@@ -59,10 +60,17 @@ The LED ring switch uses brightness zero for off and persistently restores the
 last non-zero brightness when switched back on. The brightness control remains
 available independently.
 
-Protect currently reports unset thresholds as `null`; their Home Assistant
-number entities therefore show `Unknown` until a value is configured. The
-opaque `alertInterval` and `readingInterval` fields are not exposed because
-Protect provides neither documented units nor supported ranges for them.
+Vape is a firmware-specific exception: its lower threshold is fixed at zero,
+its high threshold follows the vape-sensitivity value, and sending `null` does
+not clear those limits. The integration therefore disables a vape alarm via
+its `isEnabled` flag while preserving the device-managed thresholds.
+
+Protect reports unset thresholds as `null`; their Home Assistant number
+entities render this as `0` for a consistent numeric display. Internally the
+integration still distinguishes an unset threshold from an explicitly set
+zero, so alarm switches remain accurate. The opaque `alertInterval` and
+`readingInterval` fields are not exposed because Protect provides neither
+documented units nor supported ranges for them.
 
 ## Installation
 

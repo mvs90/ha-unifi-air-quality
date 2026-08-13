@@ -62,7 +62,6 @@
       "tvoc_high_threshold": { "name": "TVOC-Obergrenze" },
       "voc_low_threshold": { "name": "VOC-Index-Untergrenze" },
       "voc_high_threshold": { "name": "VOC-Index-Obergrenze" },
-      "vape_low_threshold": { "name": "Vape-Index-Untergrenze" },
       "vape_high_threshold": { "name": "Vape-Index-Obergrenze" }
     },
     "select": {

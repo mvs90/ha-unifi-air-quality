@@ -142,6 +142,9 @@ class AirQualitySwitch(UnifiAirQualityEntity, SwitchEntity):
     async def async_turn_off(self, **kwargs: object) -> None:
         if self.entity_description.is_alarm:
             settings_path = self.entity_description.path[:-1]
+            if settings_path[-1] == "vapeSettings":
+                await self.async_write_value(self.entity_description.path, False)
+                return
             await self.coordinator.client.async_update_device(
                 self._device_id,
                 {

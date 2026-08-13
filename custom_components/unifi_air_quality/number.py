@@ -17,9 +17,11 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import UnifiAirQualityConfigEntry
+from .const import DOMAIN
 from .coordinator import UnifiAirQualityCoordinator
 from .entity import UnifiAirQualityEntity
 
@@ -42,6 +44,7 @@ class ThresholdMetric:
     maximum: float
     step: float
     unit: str | None = None
+    bounds: tuple[str, ...] = ("low", "high")
 
 
 THRESHOLD_METRICS = (
@@ -65,7 +68,7 @@ THRESHOLD_METRICS = (
     ),
     ThresholdMetric("tvoc", "tvocSettings", 0, 1000, 1),
     ThresholdMetric("voc", "vocSettings", 0, 500, 1),
-    ThresholdMetric("vape", "vapeSettings", 0, 100, 1),
+    ThresholdMetric("vape", "vapeSettings", 0, 100, 1, bounds=("high",)),
 )
 
 NUMBER_DESCRIPTIONS: tuple[AirQualityNumberDescription, ...] = (
@@ -124,7 +127,7 @@ NUMBER_DESCRIPTIONS: tuple[AirQualityNumberDescription, ...] = (
             activates_alarm=True,
         )
         for metric in THRESHOLD_METRICS
-        for bound in ("low", "high")
+        for bound in metric.bounds
     ),
 )
 
@@ -136,6 +139,13 @@ async def async_setup_entry(
 ) -> None:
     """Set up writable numeric settings."""
     coordinator = entry.runtime_data.coordinator
+    registry = er.async_get(hass)
+    obsolete_suffixes = ("_reading_interval", "_vape_low_threshold")
+    for registry_entry in list(registry.entities.values()):
+        if registry_entry.platform == DOMAIN and registry_entry.unique_id.endswith(
+            obsolete_suffixes
+        ):
+            registry.async_remove(registry_entry.entity_id)
     async_add_entities(
         AirQualityNumber(coordinator, device.id, description)
         for device in coordinator.data.devices
@@ -160,12 +170,25 @@ class AirQualityNumber(UnifiAirQualityEntity, NumberEntity):
     @property
     def native_value(self) -> float | None:
         value = self.raw_value(self.entity_description.path)
+        if value is None and self.entity_description.activates_alarm:
+            return 0.0
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             return None
         return float(value)
 
     async def async_set_native_value(self, value: float) -> None:
         normalized: int | float = int(value) if value.is_integer() else value
+        if self.entity_description.key == "vape_sensitivity":
+            await self.coordinator.client.async_update_device(
+                self._device_id,
+                {
+                    "airQualitySettings": {
+                        "vapeSensitivitySettings": {"sensitivity": normalized},
+                        "vapeSettings": {"highThreshold": normalized},
+                    }
+                },
+            )
+            return
         if self.entity_description.activates_alarm:
             settings_key = self.entity_description.path[-2]
             threshold_key = self.entity_description.path[-1]

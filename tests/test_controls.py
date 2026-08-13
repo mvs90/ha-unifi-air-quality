@@ -6,7 +6,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 
+from custom_components.unifi_air_quality.api import _deep_merge
+from custom_components.unifi_air_quality.const import DOMAIN
 from custom_components.unifi_air_quality.entity import nested_update, nested_value
 from custom_components.unifi_air_quality.models import AirQualityDevice, ProtectSnapshot
 from custom_components.unifi_air_quality.number import (
@@ -101,10 +104,23 @@ async def test_platforms_add_all_controls(hass) -> None:
     await async_setup_selects(hass, entry, lambda entities: selects.extend(entities))
     await async_setup_times(hass, entry, lambda entities: times.extend(entities))
 
-    assert len(numbers) == len(NUMBER_DESCRIPTIONS) == 25
+    assert len(numbers) == len(NUMBER_DESCRIPTIONS) == 24
     assert len(switches) == len(SWITCH_DESCRIPTIONS) + 1 == 16
     assert len(selects) == 1
     assert len(times) == len(TIME_DESCRIPTIONS) == 2
+
+
+async def test_number_platform_removes_obsolete_controls(hass) -> None:
+    coordinator = _coordinator(_device())
+    entry = SimpleNamespace(runtime_data=SimpleNamespace(coordinator=coordinator))
+    registry = er.async_get(hass)
+    obsolete = registry.async_get_or_create(
+        "number", DOMAIN, "device-id_vape_low_threshold"
+    )
+
+    await async_setup_numbers(hass, entry, lambda entities: None)
+
+    assert registry.async_get(obsolete.entity_id) is None
 
 
 async def test_switch_reads_and_writes() -> None:
@@ -168,6 +184,24 @@ async def test_alarm_with_threshold_can_be_enabled() -> None:
     )
 
 
+async def test_vape_alarm_off_preserves_firmware_managed_thresholds() -> None:
+    coordinator = _coordinator(_device())
+    coordinator.data.devices[0].raw["airQualitySettings"]["vapeSettings"] = {
+        "isEnabled": True,
+        "lowThreshold": 0,
+        "highThreshold": 50,
+    }
+    entity = AirQualitySwitch(
+        coordinator, "device-id", _description(SWITCH_DESCRIPTIONS, "vape_alerts")
+    )
+
+    await entity.async_turn_off()
+    coordinator.client.async_update_device.assert_awaited_once_with(
+        "device-id",
+        {"airQualitySettings": {"vapeSettings": {"isEnabled": False}}},
+    )
+
+
 async def test_ring_led_switch_restores_brightness() -> None:
     coordinator = _coordinator(_device())
     entity = RingLedSwitch(coordinator, "device-id")
@@ -227,7 +261,27 @@ async def test_number_reads_and_writes_integer_and_float() -> None:
         "device-id",
         _description(NUMBER_DESCRIPTIONS, "aqi_low_threshold"),
     )
-    assert missing.native_value is None
+    assert missing.native_value == 0
+
+
+async def test_vape_sensitivity_mirrors_firmware_coupled_threshold() -> None:
+    coordinator = _coordinator(_device())
+    entity = AirQualityNumber(
+        coordinator,
+        "device-id",
+        _description(NUMBER_DESCRIPTIONS, "vape_sensitivity"),
+    )
+
+    await entity.async_set_native_value(35.0)
+    coordinator.client.async_update_device.assert_awaited_once_with(
+        "device-id",
+        {
+            "airQualitySettings": {
+                "vapeSensitivitySettings": {"sensitivity": 35},
+                "vapeSettings": {"highThreshold": 35},
+            }
+        },
+    )
 
 
 async def test_select_reads_and_writes() -> None:
@@ -275,3 +329,93 @@ def test_nested_helpers_and_availability() -> None:
     coordinator.data = ProtectSnapshot("console", "Protect", "6.2", "2", ())
     assert not entity.available
     assert entity.raw_value(("airQualitySettings",)) is None
+
+
+@pytest.mark.parametrize("description", NUMBER_DESCRIPTIONS, ids=lambda item: item.key)
+@pytest.mark.parametrize("position", ["minimum", "middle", "maximum"])
+async def test_every_number_accepts_boundary_and_representative_values(
+    description, position
+) -> None:
+    coordinator = _coordinator(_device())
+    entity = AirQualityNumber(coordinator, "device-id", description)
+    minimum = float(description.native_min_value)
+    maximum = float(description.native_max_value)
+    values = {
+        "minimum": minimum,
+        "middle": (minimum + maximum) / 2,
+        "maximum": maximum,
+    }
+
+    await entity.async_set_native_value(values[position])
+
+    update = coordinator.client.async_update_device.await_args.args[1]
+    assert nested_value(update, description.path) == values[position]
+    if description.activates_alarm:
+        assert nested_value(update, (*description.path[:-1], "isEnabled")) is True
+
+
+@pytest.mark.parametrize(
+    ("enabled", "low", "high"),
+    [
+        (enabled, low, high)
+        for enabled in (False, True)
+        for low in (None, 10)
+        for high in (None, 90)
+    ],
+)
+def test_every_alarm_switch_state_combination(enabled, low, high) -> None:
+    for description in (item for item in SWITCH_DESCRIPTIONS if item.is_alarm):
+        device = _device()
+        _deep_merge(
+            device.raw,
+            nested_update(
+                description.path[:-1],
+                {
+                    "isEnabled": enabled,
+                    "lowThreshold": low,
+                    "highThreshold": high,
+                },
+            ),
+        )
+        entity = AirQualitySwitch(_coordinator(device), "device-id", description)
+        assert entity.is_on is (enabled and (low is not None or high is not None))
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_every_non_alarm_switch_boolean_state(enabled) -> None:
+    for description in (item for item in SWITCH_DESCRIPTIONS if not item.is_alarm):
+        device = _device()
+        _deep_merge(device.raw, nested_update(description.path, enabled))
+        entity = AirQualitySwitch(_coordinator(device), "device-id", description)
+        assert entity.is_on is enabled
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"), [(0, "carbon_dioxide"), (1, "air_quality")]
+)
+async def test_every_led_metric_option_round_trip(raw_value, expected) -> None:
+    device = _device()
+    device.raw["airQualitySettings"]["ringLedMetric"] = raw_value
+    coordinator = _coordinator(device)
+    entity = RingLedMetricSelect(coordinator, "device-id")
+    assert entity.current_option == expected
+
+    await entity.async_select_option(expected)
+    coordinator.client.async_update_device.assert_awaited_once_with(
+        "device-id", {"airQualitySettings": {"ringLedMetric": raw_value}}
+    )
+
+
+@pytest.mark.parametrize("wire_value", ["00:00", "12:34", "23:59"])
+async def test_night_mode_time_boundaries_round_trip(wire_value) -> None:
+    for description in TIME_DESCRIPTIONS:
+        device = _device()
+        _deep_merge(device.raw, nested_update(description.path, wire_value))
+        coordinator = _coordinator(device)
+        entity = AirQualityTime(coordinator, "device-id", description)
+        expected = time.fromisoformat(wire_value)
+        assert entity.native_value == expected
+        await entity.async_set_value(expected)
+        coordinator.client.async_update_device.assert_awaited_once_with(
+            "device-id", nested_update(description.path, wire_value)
+        )

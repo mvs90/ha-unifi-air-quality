@@ -62,7 +62,6 @@
       "tvoc_high_threshold": { "name": "TVOC high threshold" },
       "voc_low_threshold": { "name": "VOC index low threshold" },
       "voc_high_threshold": { "name": "VOC index high threshold" },
-      "vape_low_threshold": { "name": "Vape index low threshold" },
       "vape_high_threshold": { "name": "Vape index high threshold" }
     },
     "select": {

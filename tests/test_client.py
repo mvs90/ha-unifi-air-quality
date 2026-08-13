@@ -6,7 +6,7 @@ import struct
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from aiohttp import ClientConnectionError, WSMsgType
+from aiohttp import ClientConnectionError, WSMsgType, WSServerHandshakeError
 from multidict import CIMultiDict
 
 from custom_components.unifi_air_quality.api import (
@@ -15,6 +15,7 @@ from custom_components.unifi_air_quality.api import (
     ProtectInvalidAuth,
     ProtectProtocolError,
 )
+from custom_components.unifi_air_quality.models import ProtectAlarm, ProtectAlarmEvent
 
 HEADER = struct.Struct("!bbbbi")
 
@@ -51,6 +52,7 @@ class FakeSession:
         self.post_calls = []
         self.get_calls = []
         self.patch_calls = []
+        self.ws_calls = []
 
     def post(self, url, **kwargs):
         self.post_calls.append((url, kwargs))
@@ -65,6 +67,9 @@ class FakeSession:
         return self.patch_response
 
     async def ws_connect(self, url, **kwargs):
+        self.ws_calls.append((url, kwargs))
+        if isinstance(self.websocket, Exception):
+            raise self.websocket
         return self.websocket
 
 
@@ -216,6 +221,16 @@ async def test_bootstrap_auth_and_protocol_errors() -> None:
     with pytest.raises(ProtectProtocolError):
         await client.async_get_snapshot()
 
+    client = _client(
+        FakeSession(
+            FakeResponse(),
+            FakeResponse(error=ClientConnectionError("offline")),
+        )
+    )
+    client._headers["Cookie"] = "existing"
+    with pytest.raises(ProtectCannotConnect):
+        await client.async_get_snapshot()
+
     client = _client(FakeSession(FakeResponse(), FakeResponse(payload=[])))
     with pytest.raises(ProtectProtocolError):
         await client.async_get_snapshot()
@@ -246,6 +261,65 @@ async def test_websocket_push_updates_snapshot(load_fixture) -> None:
     callback.assert_called_once()
 
 
+async def test_sensor_status_updates_emit_deduplicated_alarm_transitions(
+    load_fixture,
+) -> None:
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    await client.async_get_snapshot()
+    callback = MagicMock()
+    client.subscribe_alarm_events(callback)
+
+    def status_frame(status, value=1200):
+        return _frame(
+            {
+                "action": "update",
+                "modelKey": "sensor",
+                "id": "anonymous-air-quality-id",
+            }
+        ) + _frame({"airQuality": {"co2": {"status": status, "value": value}}})
+
+    client._process_websocket_payload(status_frame("high"))
+    client._process_websocket_payload(status_frame("high", 1250))
+    assert callback.call_count == 1
+    assert callback.call_args.args[0] == ProtectAlarmEvent(
+        "anonymous-air-quality-id", "co2", "started", "high", 1200
+    )
+    assert client.snapshot.devices[0].active_alarms == (
+        ProtectAlarm("co2", "high", 1250),
+    )
+
+    client._process_websocket_payload(status_frame("neutral", 800))
+    client._process_websocket_payload(status_frame("neutral", 790))
+    assert callback.call_count == 2
+    assert callback.call_args.args[0].transition == "ended"
+    assert client.snapshot.devices[0].active_alarms == ()
+
+    client._process_websocket_payload(
+        _frame(
+            {
+                "action": "update",
+                "modelKey": "sensor",
+                "id": "anonymous-air-quality-id",
+            }
+        )
+        + _frame(
+            {
+                "airQuality": {
+                    "invalid": "not-a-reading",
+                    "missing_status": {"value": 1},
+                    "empty_status": {"status": ""},
+                    4: {"status": "high"},
+                    "boolean_value": {"status": "high", "value": True},
+                }
+            }
+        )
+    )
+    assert callback.call_args.args[0] == ProtectAlarmEvent(
+        "anonymous-air-quality-id", "boolean_value", "started", "high", None
+    )
+
+
 async def test_websocket_add_remove_and_ignored_frames(load_fixture) -> None:
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
@@ -254,6 +328,12 @@ async def test_websocket_add_remove_and_ignored_frames(load_fixture) -> None:
     client._process_websocket_payload(b"bad")
     client._process_websocket_payload(
         _frame({"action": "update", "modelKey": "camera", "id": "x"}) + _frame({})
+    )
+    client._process_websocket_payload(
+        _frame({"action": "update", "modelKey": "sensor"}) + _frame({"id": 42})
+    )
+    client._process_websocket_payload(
+        _frame({"action": "unknown", "modelKey": "sensor", "id": "x"}) + _frame({})
     )
     client._process_websocket_payload(
         _frame({"action": "add", "modelKey": "sensor", "id": "new"})
@@ -266,6 +346,118 @@ async def test_websocket_add_remove_and_ignored_frames(load_fixture) -> None:
     assert len(client.snapshot.devices) == 1
 
 
+async def test_websocket_alarm_start_end_and_unsubscribe(load_fixture) -> None:
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    events = json.loads(load_fixture("websocket_alarm_events.json"))
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    await client.async_get_snapshot()
+    alarm_callback = MagicMock()
+    update_callback = MagicMock()
+    unsubscribe = client.subscribe_alarm_events(alarm_callback)
+    client.set_update_callback(update_callback)
+
+    started = events["extreme_started"]
+    client._process_websocket_payload(
+        _frame(started["action"]) + _frame(started["data"])
+    )
+
+    alarm = client.snapshot.devices[0].active_alarms[0]
+    assert (alarm.metric, alarm.status, alarm.value) == ("co2", "high", 1200)
+    normalized = alarm_callback.call_args.args[0]
+    assert (
+        normalized.device_id,
+        normalized.metric,
+        normalized.transition,
+        normalized.status,
+        normalized.value,
+    ) == ("anonymous-air-quality-id", "co2", "started", "high", 1200)
+
+    ended = events["extreme_ended"]
+    in_progress = ended["action"] | {"action": "update"}
+    client._process_websocket_payload(
+        _frame(in_progress) + _frame({"metadata": {"sensorValue": {"text": 1250}}})
+    )
+    assert alarm_callback.call_count == 1
+
+    client._process_websocket_payload(_frame(ended["action"]) + _frame(ended["data"]))
+    assert client.snapshot.devices[0].active_alarms == ()
+    assert alarm_callback.call_args.args[0].transition == "ended"
+    assert update_callback.call_count == 2
+
+    unsubscribe()
+    client._process_websocket_payload(
+        _frame(started["action"] | {"id": "second-event"})
+        + _frame(started["data"] | {"id": "second-event"})
+    )
+    assert alarm_callback.call_count == 2
+
+
+async def test_websocket_vape_and_alarm_edge_cases(load_fixture) -> None:
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    events = json.loads(load_fixture("websocket_alarm_events.json"))
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    await client.async_get_snapshot()
+    callback = MagicMock()
+    client.subscribe_alarm_events(callback)
+
+    vape = events["vape_started"]
+    client._process_websocket_payload(_frame(vape["action"]) + _frame(vape["data"]))
+    event = callback.call_args.args[0]
+    assert (event.metric, event.status, event.value) == ("vape", "detected", None)
+
+    ignored = (
+        ({"action": "update", "modelKey": "event"}, {}),
+        (
+            {"action": "noop", "modelKey": "event", "id": "x"},
+            {"type": "sensorExtremeValues"},
+        ),
+        (
+            {"action": "add", "modelKey": "event", "id": "x"},
+            {"type": "motion", "device": "anonymous-air-quality-id"},
+        ),
+        (
+            {"action": "add", "modelKey": "event", "id": "x"},
+            {"type": "sensorExtremeValues", "device": 42},
+        ),
+        (
+            {"action": "add", "modelKey": "event", "id": "x"},
+            {
+                "type": "sensorExtremeValues",
+                "device": "anonymous-air-quality-id",
+                "metadata": {"sensorType": {"text": 42}},
+            },
+        ),
+    )
+    for action, data in ignored:
+        client._process_websocket_payload(_frame(action) + _frame(data))
+    assert callback.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [("12.5", 12.5), ("invalid", None), (True, None), (None, None)],
+)
+def test_alarm_details_value_normalization(raw_value, expected) -> None:
+    assert PrivateProtectClient._alarm_details(
+        {
+            "type": "sensorExtremeValues",
+            "metadata": {
+                "sensorType": "co2",
+                "status": "high",
+                "sensorValue": raw_value,
+            },
+        }
+    ) == ("co2", "high", expected)
+
+
+def test_alarm_details_rejects_missing_metadata() -> None:
+    assert PrivateProtectClient._alarm_details({"type": "sensorExtremeValues"}) == (
+        None,
+        None,
+        None,
+    )
+
+
 async def test_start_and_close_background_task() -> None:
     client = _client(FakeSession(FakeResponse(), FakeResponse()))
     blocker = asyncio.Event()
@@ -274,6 +466,7 @@ async def test_start_and_close_background_task() -> None:
     assert client._ws_task is not None
     await client.async_close()
     assert client._ws_task is None
+    await client.async_close()
 
 
 async def test_websocket_loop_recovers_from_connection_error() -> None:
@@ -291,6 +484,22 @@ async def test_websocket_loop_recovers_from_connection_error() -> None:
     assert client.websocket_connected is False
 
 
+async def test_websocket_loop_resets_backoff_after_clean_disconnect() -> None:
+    client = _client(FakeSession(FakeResponse(), FakeResponse()))
+    client._websocket_once = AsyncMock()
+
+    async def stop_after_backoff(delay):
+        assert delay == 1
+        client._closing = True
+
+    with patch(
+        "custom_components.unifi_air_quality.api.asyncio.sleep",
+        side_effect=stop_after_backoff,
+    ):
+        await client._websocket_loop()
+    client._websocket_once.assert_awaited_once()
+
+
 async def test_websocket_loop_reauthenticates() -> None:
     client = _client(FakeSession(FakeResponse(), FakeResponse()))
     client._headers["Cookie"] = "expired"
@@ -306,3 +515,66 @@ async def test_websocket_loop_reauthenticates() -> None:
     ):
         await client._websocket_loop()
     assert client._headers == {}
+
+
+async def test_websocket_authenticates_and_uses_last_update_id(load_fixture) -> None:
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    websocket = FakeWebsocket([])
+    session = FakeSession(
+        FakeResponse(headers=[("Set-Cookie", "TOKEN=anonymous")]),
+        FakeResponse(payload=payload),
+        websocket,
+    )
+    client = _client(session)
+    await client.async_get_snapshot()
+    client._headers.clear()
+
+    await client._websocket_once()
+
+    assert session.ws_calls[0][0].endswith("?lastUpdateId=anonymous-update-id")
+    assert client.websocket_connected is True
+
+
+@pytest.mark.parametrize("status", [401, 403])
+async def test_websocket_maps_auth_handshake_error(status) -> None:
+    error = WSServerHandshakeError(
+        MagicMock(real_url="https://protect.local"),
+        (),
+        status=status,
+        message="unauthorized",
+    )
+    session = FakeSession(FakeResponse(), FakeResponse(), error)
+    client = _client(session)
+    client._headers["Cookie"] = "expired"
+
+    with pytest.raises(ProtectInvalidAuth):
+        await client._websocket_once()
+
+
+async def test_websocket_preserves_non_auth_handshake_error() -> None:
+    error = WSServerHandshakeError(
+        MagicMock(real_url="https://protect.local"),
+        (),
+        status=500,
+        message="failure",
+    )
+    session = FakeSession(FakeResponse(), FakeResponse(), error)
+    client = _client(session)
+    client._headers["Cookie"] = "valid"
+
+    with pytest.raises(WSServerHandshakeError):
+        await client._websocket_once()
+
+
+async def test_websocket_loop_propagates_cancellation() -> None:
+    client = _client(FakeSession(FakeResponse(), FakeResponse()))
+    client._websocket_once = AsyncMock(side_effect=asyncio.CancelledError())
+
+    with pytest.raises(asyncio.CancelledError):
+        await client._websocket_loop()
+
+
+def test_rebuild_before_initial_snapshot_is_safe() -> None:
+    client = _client(FakeSession(FakeResponse(), FakeResponse()))
+    client._rebuild_snapshot("ignored")
+    assert client.snapshot is None

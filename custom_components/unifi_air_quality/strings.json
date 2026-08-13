@@ -38,6 +38,22 @@
     }
   },
   "entity": {
+    "binary_sensor": {
+      "aqi_alarm": { "name": "Air quality index alarm" },
+      "co2_alarm": { "name": "Carbon dioxide alarm" },
+      "humidity_alarm": { "name": "Humidity alarm" },
+      "temperature_alarm": { "name": "Temperature alarm" },
+      "pm1_alarm": { "name": "PM1 alarm" },
+      "pm25_alarm": { "name": "PM2.5 alarm" },
+      "pm4_alarm": { "name": "PM4 alarm" },
+      "pm10_alarm": { "name": "PM10 alarm" },
+      "tvoc_alarm": { "name": "TVOC alarm" },
+      "voc_alarm": { "name": "VOC alarm" },
+      "vape_alarm": { "name": "Vape alarm" }
+    },
+    "event": {
+      "air_quality_alarm": { "name": "Air quality alarm event" }
+    },
     "number": {
       "ring_led_brightness": { "name": "LED ring brightness" },
       "night_mode_brightness": { "name": "Night mode brightness" },

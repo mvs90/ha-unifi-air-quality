@@ -19,7 +19,12 @@ from aiohttp import (
 )
 
 from .const import MODEL
-from .models import AirQualityDevice, ProtectSnapshot
+from .models import (
+    AirQualityDevice,
+    ProtectAlarm,
+    ProtectAlarmEvent,
+    ProtectSnapshot,
+)
 from .websocket import WebsocketDecodeError, decode_message
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,6 +33,9 @@ _BOOTSTRAP_PATH = "/proxy/protect/api/bootstrap"
 _LOGIN_PATH = "/api/auth/login"
 _WS_PATH = "/proxy/protect/ws/updates"
 _SENSOR_PATH = "/proxy/protect/api/sensors/{device_id}"
+
+_ALARM_EVENT_TYPES = {"sensorExtremeValues", "sensorVape"}
+_NON_ALARM_STATUSES = frozenset({"good", "neutral", "normal", "safe"})
 
 
 class ProtectApiError(Exception):
@@ -76,7 +84,10 @@ def _is_air_quality_sensor(sensor: Mapping[str, Any]) -> bool:
     return False
 
 
-def snapshot_from_bootstrap(payload: Mapping[str, Any]) -> ProtectSnapshot:
+def snapshot_from_bootstrap(
+    payload: Mapping[str, Any],
+    active_alarms: Mapping[str, tuple[ProtectAlarm, ...]] | None = None,
+) -> ProtectSnapshot:
     """Convert a raw private bootstrap response into the adapter model."""
     nvr = payload.get("nvr")
     sensors = payload.get("sensors")
@@ -104,6 +115,7 @@ def snapshot_from_bootstrap(payload: Mapping[str, Any]) -> ProtectSnapshot:
                 firmware_version=firmware if isinstance(firmware, str) else None,
                 is_connected=bool(sensor.get("isConnected", True)),
                 raw=sensor.copy(),
+                active_alarms=(active_alarms or {}).get(device_id, ()),
             )
         )
 
@@ -148,6 +160,11 @@ class PrivateProtectClient:
         self._snapshot: ProtectSnapshot | None = None
         self._raw_devices: dict[str, dict[str, Any]] = {}
         self._update_callback: Callable[[ProtectSnapshot], None] | None = None
+        self._alarm_callbacks: set[Callable[[ProtectAlarmEvent], None]] = set()
+        self._raw_alarm_events: dict[str, dict[str, Any]] = {}
+        self._active_alarm_events: dict[str, ProtectAlarm] = {}
+        self._alarm_event_devices: dict[str, str] = {}
+        self._alarm_states: dict[tuple[str, str], ProtectAlarm] = {}
         self._ws_task: asyncio.Task[None] | None = None
         self.websocket_connected = False
         self._closing = False
@@ -163,6 +180,17 @@ class PrivateProtectClient:
     ) -> None:
         """Set the callback for push updates."""
         self._update_callback = callback
+
+    def subscribe_alarm_events(
+        self, callback: Callable[[ProtectAlarmEvent], None]
+    ) -> Callable[[], None]:
+        """Subscribe to normalized alarm transitions and return an unsubscribe."""
+        self._alarm_callbacks.add(callback)
+
+        def unsubscribe() -> None:
+            self._alarm_callbacks.discard(callback)
+
+        return unsubscribe
 
     async def _async_authenticate(self) -> None:
         try:
@@ -217,7 +245,7 @@ class PrivateProtectClient:
 
         if not isinstance(payload, dict):
             raise ProtectProtocolError("Protect bootstrap must be an object")
-        snapshot = snapshot_from_bootstrap(payload)
+        snapshot = snapshot_from_bootstrap(payload, self._alarms_by_device())
         self._raw_devices = {
             device.id: device.raw.copy() for device in snapshot.devices
         }
@@ -318,7 +346,11 @@ class PrivateProtectClient:
         except WebsocketDecodeError:
             _LOGGER.debug("Ignored an unsupported Protect WebSocket frame")
             return
-        if action.get("modelKey") != "sensor":
+        model_key = action.get("modelKey")
+        if model_key == "event":
+            self._process_alarm_event(action, data)
+            return
+        if model_key != "sensor":
             return
         device_id = action.get("id") or data.get("id")
         if not isinstance(device_id, str):
@@ -330,9 +362,139 @@ class PrivateProtectClient:
         elif operation in ("add", "update"):
             current = self._raw_devices.setdefault(device_id, {"id": device_id})
             _deep_merge(current, data)
+            self._process_sensor_alarm_statuses(device_id, data)
         else:
             return
         self._rebuild_snapshot(action.get("newUpdateId"))
+
+    def _process_alarm_event(
+        self, action: Mapping[str, Any], data: Mapping[str, Any]
+    ) -> None:
+        """Normalize relevant private Protect event frames."""
+        event_id = action.get("id") or data.get("id")
+        operation = action.get("action")
+        if not isinstance(event_id, str) or operation not in (
+            "add",
+            "update",
+            "remove",
+        ):
+            return
+
+        current = self._raw_alarm_events.setdefault(event_id, {})
+        _deep_merge(current, data)
+        event_type = current.get("type")
+        if event_type not in _ALARM_EVENT_TYPES:
+            self._raw_alarm_events.pop(event_id, None)
+            return
+
+        device_id = current.get("device")
+        if not isinstance(device_id, str):
+            device_id = self._alarm_event_devices.get(event_id)
+        metric, status, value = self._alarm_details(current)
+        if not isinstance(device_id, str) or metric is None:
+            return
+
+        self._alarm_event_devices[event_id] = device_id
+        is_ended = operation == "remove" or current.get("end") is not None
+        transition = "ended" if is_ended else "started"
+        if operation == "update" and not is_ended:
+            return
+
+        alarm = ProtectAlarm(metric=metric, status=status, value=value)
+        if is_ended:
+            previous = self._active_alarm_events.pop(event_id, None)
+            if previous is not None:
+                alarm = previous
+            self._raw_alarm_events.pop(event_id, None)
+            self._alarm_event_devices.pop(event_id, None)
+        else:
+            self._active_alarm_events[event_id] = alarm
+        self._set_alarm_state(device_id, alarm, transition == "started")
+        self._rebuild_snapshot(action.get("newUpdateId"))
+
+    def _process_sensor_alarm_statuses(
+        self, device_id: str, update: Mapping[str, Any]
+    ) -> None:
+        """Normalize alarm transitions carried by sensor-state updates."""
+        readings = update.get("airQuality")
+        if not isinstance(readings, Mapping):
+            return
+        for metric, measurement in readings.items():
+            if not isinstance(metric, str) or not isinstance(measurement, Mapping):
+                continue
+            status = measurement.get("status")
+            if not isinstance(status, str) or not status:
+                continue
+            raw_value = measurement.get("value")
+            value = (
+                raw_value
+                if isinstance(raw_value, (int, float))
+                and not isinstance(raw_value, bool)
+                else None
+            )
+            self._set_alarm_state(
+                device_id,
+                ProtectAlarm(metric, status, value),
+                status.casefold() not in _NON_ALARM_STATUSES,
+            )
+
+    def _set_alarm_state(
+        self, device_id: str, alarm: ProtectAlarm, active: bool
+    ) -> None:
+        """Update one metric state and emit only real state transitions."""
+        key = (device_id, alarm.metric)
+        previous = self._alarm_states.get(key)
+        if active:
+            self._alarm_states[key] = alarm
+        else:
+            self._alarm_states.pop(key, None)
+        if (previous is not None) == active:
+            return
+        normalized = ProtectAlarmEvent(
+            device_id=device_id,
+            metric=alarm.metric,
+            transition="started" if active else "ended",
+            status=alarm.status,
+            value=alarm.value,
+        )
+        for callback in tuple(self._alarm_callbacks):
+            callback(normalized)
+
+    @staticmethod
+    def _alarm_details(
+        event: Mapping[str, Any],
+    ) -> tuple[str | None, str | None, int | float | None]:
+        """Extract metric, status and value from an event payload."""
+        if event.get("type") == "sensorVape":
+            return "vape", "detected", None
+        metadata = event.get("metadata")
+        if not isinstance(metadata, Mapping):
+            return None, None, None
+
+        def text(name: str) -> Any:
+            value = metadata.get(name)
+            return value.get("text") if isinstance(value, Mapping) else value
+
+        metric = text("sensorType")
+        status = text("status")
+        value = text("sensorValue")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            try:
+                value = float(value) if isinstance(value, str) else None
+            except ValueError:
+                value = None
+        return (
+            metric if isinstance(metric, str) else None,
+            status if isinstance(status, str) else None,
+            value,
+        )
+
+    def _alarms_by_device(self) -> dict[str, tuple[ProtectAlarm, ...]]:
+        """Group active alarm events by their sensor device."""
+        grouped: dict[str, list[ProtectAlarm]] = {}
+        for (device_id, _metric), alarm in self._alarm_states.items():
+            grouped.setdefault(device_id, []).append(alarm)
+        return {device_id: tuple(alarms) for device_id, alarms in grouped.items()}
 
     def _rebuild_snapshot(self, update_id: Any) -> None:
         if self._snapshot is None:
@@ -350,7 +512,7 @@ class PrivateProtectClient:
                 else self._snapshot.last_update_id
             ),
         }
-        self._snapshot = snapshot_from_bootstrap(raw)
+        self._snapshot = snapshot_from_bootstrap(raw, self._alarms_by_device())
         if self._update_callback is not None:
             self._update_callback(self._snapshot)
 
@@ -358,6 +520,7 @@ class PrivateProtectClient:
         """Stop background work without closing HA's shared HTTP session."""
         self._closing = True
         self._update_callback = None
+        self._alarm_callbacks.clear()
         if self._ws_task is not None:
             self._ws_task.cancel()
             try:

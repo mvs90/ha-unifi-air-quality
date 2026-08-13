@@ -13,7 +13,11 @@ from custom_components.unifi_air_quality.diagnostics import (
     async_get_config_entry_diagnostics,
     sanitize_raw,
 )
-from custom_components.unifi_air_quality.models import AirQualityDevice, ProtectSnapshot
+from custom_components.unifi_air_quality.models import (
+    AirQualityDevice,
+    ProtectAlarm,
+    ProtectSnapshot,
+)
 
 
 def test_sanitize_raw_preserves_shape_and_measurements(load_fixture) -> None:
@@ -47,7 +51,13 @@ def test_sanitize_raw_lists_and_unknown_types() -> None:
 
 async def test_config_entry_diagnostics(hass) -> None:
     device = AirQualityDevice(
-        "sensor", "Private room", "UP-AirQuality", "1.0", True, {"co2": 600}
+        "sensor",
+        "Private room",
+        "UP-AirQuality",
+        "1.0",
+        True,
+        {"co2": 600},
+        (ProtectAlarm("co2", "high", 1200),),
     )
     snapshot = ProtectSnapshot("console", "Private", "6.2", "update", (device,))
     client = MagicMock(websocket_connected=True)
@@ -64,5 +74,6 @@ async def test_config_entry_diagnostics(hass) -> None:
 
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
     assert diagnostics["transport"]["air_quality_device_count"] == 1
+    assert diagnostics["transport"]["active_alarm_count"] == 1
     assert diagnostics["devices"] == [{"co2": 600}]
     assert diagnostics["config_entry"][CONF_PASSWORD] == "**REDACTED**"

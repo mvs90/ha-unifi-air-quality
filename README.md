@@ -9,9 +9,9 @@ MQTT, a cloud account, and an additional bridge are not required.
 > because the Public Integration API does not expose continuous air-quality
 > readings yet. A dedicated API boundary keeps a later migration isolated.
 
-## Current milestone: live measurements
+## Current milestone: measurements, controls, and alarm triggers
 
-Version `0.3.0` can:
+Version `0.4.0` can:
 
 - configure a local Protect console through the Home Assistant UI;
 - authenticate with a dedicated local Protect user;
@@ -21,13 +21,35 @@ Version `0.3.0` can:
 - expose eleven measurement entities with native Home Assistant device and
   state classes; and
 - configure LEDs, night mode, vape sensitivity, and per-metric
-  alarms directly from Home Assistant; and
+  alarms directly from Home Assistant;
+- expose current alarm states as binary sensors and WebSocket alarm transitions
+  as an event entity for automations; and
 - export field-preserving, anonymized raw sensor data through Home Assistant
   diagnostics.
 
 The entities update from Protect WebSocket pushes and include Protect's
 classification (`safe`, `neutral`, and similar values) as the
 `protect_status` attribute.
+
+### Alarm states and automation triggers
+
+Each metric has a read-only **Alarm** binary sensor. It turns on when Protect
+reports a non-normal measurement status and off when the condition clears.
+This covers both alarm event frames and firmware versions that carry the
+transition only in the live sensor update.
+
+The device also has one **Air quality alarm event** entity with these event
+types for every metric:
+
+- `<metric>_alarm_started`
+- `<metric>_alarm_ended`
+
+For example, CO2 emits `co2_alarm_started` and `co2_alarm_ended`; vape emits
+`vape_alarm_started` and `vape_alarm_ended`. Select this event entity as an
+automation trigger and choose the desired event type. Event data contains only
+the metric, Protect status, and numeric alarm value when supplied—never a
+credential or private Protect event identifier. Duplicate event and sensor
+updates are collapsed into one state transition.
 
 | Entity | Native unit |
 | --- | --- |
@@ -129,6 +151,10 @@ docker compose -f dev/compose.yaml logs -f homeassistant
 
 Home Assistant is available at <http://localhost:8123>. The image is pinned to
 `2026.8.1`; update both `dev/compose.yaml` and the test dependency together.
+The unit suite currently exercises 181 scenarios with branch coverage enabled,
+including malformed frames, authentication failures, WebSocket reconnects,
+alarm start/end transitions, duplicate suppression, entity lifecycle, and all
+writable control combinations.
 
 ## Removal
 

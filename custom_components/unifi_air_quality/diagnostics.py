@@ -82,6 +82,9 @@ async def async_get_config_entry_diagnostics(
             "websocket_connected": runtime.client.websocket_connected,
             "protect_version": snapshot.protect_version,
             "air_quality_device_count": len(snapshot.devices),
+            "active_alarm_count": sum(
+                len(device.active_alarms) for device in snapshot.devices
+            ),
         },
         "devices": [sanitize_raw(device.raw) for device in snapshot.devices],
     }

@@ -1,0 +1,40 @@
+{
+  "title": "UniFi Protect Air Quality",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Mit UniFi Protect verbinden",
+        "description": "Verwende ein eigenes lokales UniFi-OS-Konto mit Protect-Lesezugriff.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "username": "Lokaler Benutzername",
+          "password": "Passwort",
+          "verify_ssl": "TLS-Zertifikat überprüfen"
+        },
+        "data_description": {
+          "host": "Nur Hostname oder IP-Adresse, ohne https://.",
+          "verify_ssl": "Nur aktivieren, wenn Home Assistant dem Zertifikat der Konsole vertraut."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Erneut bei UniFi Protect anmelden",
+        "description": "Gib das aktuelle Passwort des konfigurierten lokalen Kontos ein.",
+        "data": {
+          "password": "Passwort"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zu UniFi Protect fehlgeschlagen.",
+      "invalid_auth": "Benutzername oder Passwort ist ungültig.",
+      "invalid_response": "Protect hat eine nicht unterstützte Antwort geliefert.",
+      "unknown": "Unerwarteter Fehler. Prüfe die Home-Assistant-Protokolle."
+    },
+    "abort": {
+      "already_configured": "Diese Protect-Konsole ist bereits konfiguriert.",
+      "reauth_successful": "Die erneute Anmeldung war erfolgreich.",
+      "unique_id_mismatch": "Die Zugangsdaten gehören zu einer anderen Protect-Konsole."
+    }
+  }
+}

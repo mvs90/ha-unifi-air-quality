@@ -1,0 +1,12 @@
+services:
+  homeassistant:
+    container_name: unifi-air-quality-ha-dev
+    image: ghcr.io/home-assistant/home-assistant:2026.8.1
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+    volumes:
+      - ./config:/config
+      - ../custom_components:/config/custom_components:ro
+    environment:
+      TZ: Europe/Berlin

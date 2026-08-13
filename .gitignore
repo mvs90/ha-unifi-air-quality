@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.coverage
+coverage.xml
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+dev/config/*
+!dev/config/.gitignore
+!dev/config/configuration.yaml
+*.env
+.DS_Store

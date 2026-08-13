@@ -1,0 +1,43 @@
+{
+  "authUserId": "anonymous-user-id",
+  "accessKey": "never-a-real-access-key",
+  "lastUpdateId": "anonymous-update-id",
+  "nvr": {
+    "id": "anonymous-console-id",
+    "name": "Anonymous Protect",
+    "version": "6.2.0"
+  },
+  "sensors": [
+    {
+      "id": "anonymous-air-quality-id",
+      "modelKey": "sensor",
+      "model": "UP-AirQuality",
+      "type": "UP-AirQuality",
+      "name": "Anonymous Room",
+      "firmwareVersion": "1.0.0",
+      "isAdopted": true,
+      "isConnected": true,
+      "mac": "00:00:00:00:00:00",
+      "airQuality": {
+        "co2": 612,
+        "aqi": 17,
+        "vapeIndex": 0,
+        "tvoc": 104,
+        "pm1": 2.1,
+        "pm2_5": 3.4,
+        "pm4": 4.1,
+        "pm10": 5.2
+      },
+      "airQualitySettings": {
+        "co2Threshold": 1200,
+        "enabled": true
+      }
+    },
+    {
+      "id": "anonymous-legacy-sensor-id",
+      "modelKey": "sensor",
+      "type": "UP-Sense",
+      "name": "Legacy sensor"
+    }
+  ]
+}

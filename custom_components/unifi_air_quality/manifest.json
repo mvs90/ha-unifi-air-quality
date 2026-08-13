@@ -1,0 +1,11 @@
+{
+  "domain": "unifi_air_quality",
+  "name": "UniFi Protect Air Quality",
+  "codeowners": ["@mvs90"],
+  "config_flow": true,
+  "documentation": "https://github.com/mvs90/ha-unifi-air-quality",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/mvs90/ha-unifi-air-quality/issues",
+  "version": "0.1.0"
+}

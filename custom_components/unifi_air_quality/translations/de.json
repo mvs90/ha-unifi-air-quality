@@ -38,6 +38,43 @@
     }
   },
   "entity": {
+    "number": {
+      "ring_led_brightness": { "name": "LED-Ring-Helligkeit" },
+      "night_mode_brightness": { "name": "Nachtmodus-Helligkeit" },
+      "vape_sensitivity": { "name": "Vape-Empfindlichkeit" },
+      "reading_interval": { "name": "Messintervall" },
+      "aqi_low_threshold": { "name": "AQI-Untergrenze" },
+      "aqi_high_threshold": { "name": "AQI-Obergrenze" },
+      "co2_low_threshold": { "name": "Kohlendioxid-Untergrenze" },
+      "co2_high_threshold": { "name": "Kohlendioxid-Obergrenze" },
+      "humidity_low_threshold": { "name": "Luftfeuchte-Untergrenze" },
+      "humidity_high_threshold": { "name": "Luftfeuchte-Obergrenze" },
+      "pm1_low_threshold": { "name": "PM1-Untergrenze" },
+      "pm1_high_threshold": { "name": "PM1-Obergrenze" },
+      "pm25_low_threshold": { "name": "PM2,5-Untergrenze" },
+      "pm25_high_threshold": { "name": "PM2,5-Obergrenze" },
+      "pm4_low_threshold": { "name": "PM4-Untergrenze" },
+      "pm4_high_threshold": { "name": "PM4-Obergrenze" },
+      "pm10_low_threshold": { "name": "PM10-Untergrenze" },
+      "pm10_high_threshold": { "name": "PM10-Obergrenze" },
+      "temperature_low_threshold": { "name": "Temperatur-Untergrenze" },
+      "temperature_high_threshold": { "name": "Temperatur-Obergrenze" },
+      "tvoc_low_threshold": { "name": "TVOC-Untergrenze" },
+      "tvoc_high_threshold": { "name": "TVOC-Obergrenze" },
+      "voc_low_threshold": { "name": "VOC-Index-Untergrenze" },
+      "voc_high_threshold": { "name": "VOC-Index-Obergrenze" },
+      "vape_low_threshold": { "name": "Vape-Index-Untergrenze" },
+      "vape_high_threshold": { "name": "Vape-Index-Obergrenze" }
+    },
+    "select": {
+      "ring_led_metric": {
+        "name": "LED-Ring-Messwert",
+        "state": {
+          "carbon_dioxide": "Kohlendioxid",
+          "air_quality": "Luftqualität"
+        }
+      }
+    },
     "sensor": {
       "aqi": { "name": "Luftqualitätsindex" },
       "co2": { "name": "Kohlendioxid" },
@@ -50,6 +87,27 @@
       "tvoc": { "name": "Flüchtige organische Verbindungen gesamt" },
       "voc_index": { "name": "VOC-Index" },
       "vape_index": { "name": "Vape-Index" }
+    },
+    "switch": {
+      "status_light": { "name": "Statusleuchte" },
+      "activity_feedback": { "name": "Aktivitätsanzeige" },
+      "night_mode": { "name": "Nachtmodus" },
+      "vape_detection": { "name": "Vape-Erkennung" },
+      "aqi_alerts": { "name": "AQI-Alarme" },
+      "co2_alerts": { "name": "Kohlendioxid-Alarme" },
+      "humidity_alerts": { "name": "Luftfeuchte-Alarme" },
+      "pm1_alerts": { "name": "PM1-Alarme" },
+      "pm25_alerts": { "name": "PM2,5-Alarme" },
+      "pm4_alerts": { "name": "PM4-Alarme" },
+      "pm10_alerts": { "name": "PM10-Alarme" },
+      "temperature_alerts": { "name": "Temperatur-Alarme" },
+      "tvoc_alerts": { "name": "TVOC-Alarme" },
+      "voc_alerts": { "name": "VOC-Alarme" },
+      "vape_alerts": { "name": "Vape-Alarme" }
+    },
+    "time": {
+      "night_mode_start": { "name": "Nachtmodus-Beginn" },
+      "night_mode_end": { "name": "Nachtmodus-Ende" }
     }
   }
 }

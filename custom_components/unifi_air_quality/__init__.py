@@ -20,7 +20,13 @@ from .api import PrivateProtectClient
 from .const import CONF_VERIFY_SSL, DOMAIN, MANUFACTURER
 from .coordinator import UnifiAirQualityCoordinator
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [
+    Platform.NUMBER,
+    Platform.SELECT,
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.TIME,
+]
 
 
 @dataclass(slots=True)

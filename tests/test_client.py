@@ -43,12 +43,14 @@ class FakeResponse:
 
 
 class FakeSession:
-    def __init__(self, post, get, websocket=None):
+    def __init__(self, post, get, websocket=None, patch=None):
         self.post_response = post
         self.get_response = get
         self.websocket = websocket
+        self.patch_response = patch or FakeResponse()
         self.post_calls = []
         self.get_calls = []
+        self.patch_calls = []
 
     def post(self, url, **kwargs):
         self.post_calls.append((url, kwargs))
@@ -57,6 +59,10 @@ class FakeSession:
     def get(self, url, **kwargs):
         self.get_calls.append((url, kwargs))
         return self.get_response
+
+    def patch(self, url, **kwargs):
+        self.patch_calls.append((url, kwargs))
+        return self.patch_response
 
     async def ws_connect(self, url, **kwargs):
         return self.websocket
@@ -121,6 +127,66 @@ async def test_get_snapshot_authenticates_and_keeps_cookie(load_fixture) -> None
     assert session.get_calls[0][1]["headers"]["Cookie"] == "TOKEN=anonymous"
     assert session.post_calls[0][1]["json"]["rememberMe"] is False
     assert client.snapshot is snapshot
+
+
+async def test_update_device_patches_and_updates_snapshot(load_fixture) -> None:
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    await client.async_get_snapshot()
+    callback = MagicMock()
+    client.set_update_callback(callback)
+
+    await client.async_update_device(
+        "anonymous-air-quality-id",
+        {"airQualitySettings": {"ringLedBrightness": 42}},
+    )
+
+    url, kwargs = session.patch_calls[0]
+    assert url.endswith("/api/sensors/anonymous-air-quality-id")
+    assert kwargs["json"] == {"airQualitySettings": {"ringLedBrightness": 42}}
+    assert (
+        client.snapshot.devices[0].raw["airQualitySettings"]["ringLedBrightness"] == 42
+    )
+    callback.assert_called_once()
+
+
+async def test_update_device_validates_and_maps_errors(load_fixture) -> None:
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    await client.async_get_snapshot()
+
+    with pytest.raises(ProtectProtocolError):
+        await client.async_update_device("missing", {"value": 1})
+    with pytest.raises(ProtectProtocolError):
+        await client.async_update_device("anonymous-air-quality-id", {})
+
+    unauthorized = _client(
+        FakeSession(
+            FakeResponse(),
+            FakeResponse(payload=payload),
+            patch=FakeResponse(status=403),
+        )
+    )
+    await unauthorized.async_get_snapshot()
+    with pytest.raises(ProtectInvalidAuth):
+        await unauthorized.async_update_device(
+            "anonymous-air-quality-id", {"ledSettings": {"isEnabled": False}}
+        )
+    assert unauthorized._headers == {}
+
+    offline = _client(
+        FakeSession(
+            FakeResponse(),
+            FakeResponse(payload=payload),
+            patch=FakeResponse(error=ClientConnectionError("offline")),
+        )
+    )
+    await offline.async_get_snapshot()
+    with pytest.raises(ProtectCannotConnect):
+        await offline.async_update_device(
+            "anonymous-air-quality-id", {"ledSettings": {"isEnabled": False}}
+        )
 
 
 @pytest.mark.parametrize("status", [401, 403])

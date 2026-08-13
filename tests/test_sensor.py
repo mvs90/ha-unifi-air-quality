@@ -65,6 +65,13 @@ def test_zero_value_is_preserved() -> None:
     assert entity.native_value == 0
 
 
+def test_tvoc_is_an_unscaled_index() -> None:
+    description = next(item for item in SENSOR_DESCRIPTIONS if item.key == "tvoc")
+
+    assert description.native_unit_of_measurement is None
+    assert description.device_class is None
+
+
 def test_invalid_or_missing_measurement_is_unknown() -> None:
     coordinator = _coordinator(_device())
     humidity = next(item for item in SENSOR_DESCRIPTIONS if item.key == "humidity")

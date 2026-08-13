@@ -27,6 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 _BOOTSTRAP_PATH = "/proxy/protect/api/bootstrap"
 _LOGIN_PATH = "/api/auth/login"
 _WS_PATH = "/proxy/protect/ws/updates"
+_SENSOR_PATH = "/proxy/protect/api/sensors/{device_id}"
 
 
 class ProtectApiError(Exception):
@@ -150,6 +151,7 @@ class PrivateProtectClient:
         self._ws_task: asyncio.Task[None] | None = None
         self.websocket_connected = False
         self._closing = False
+        self._write_lock = asyncio.Lock()
 
     @property
     def snapshot(self) -> ProtectSnapshot | None:
@@ -221,6 +223,39 @@ class PrivateProtectClient:
         }
         self._snapshot = snapshot
         return snapshot
+
+    async def async_update_device(
+        self, device_id: str, update: Mapping[str, Any]
+    ) -> None:
+        """Apply a partial settings update to one Protect sensor."""
+        if device_id not in self._raw_devices:
+            raise ProtectProtocolError("Air quality device is not available")
+        if not update:
+            raise ProtectProtocolError("Sensor update must not be empty")
+
+        async with self._write_lock:
+            if "Cookie" not in self._headers:
+                await self._async_authenticate()
+            try:
+                async with self._session.patch(
+                    f"{self._base_url}{_SENSOR_PATH.format(device_id=quote(device_id))}",
+                    json=dict(update),
+                    headers=self._headers,
+                    ssl=self._ssl,
+                ) as response:
+                    if response.status in (401, 403):
+                        self._headers.clear()
+                        raise ProtectInvalidAuth(
+                            "Protect session is not authorized to update the sensor"
+                        )
+                    response.raise_for_status()
+            except ProtectInvalidAuth:
+                raise
+            except (ClientConnectionError, ClientResponseError, TimeoutError) as err:
+                raise ProtectCannotConnect("Unable to update Protect sensor") from err
+
+            _deep_merge(self._raw_devices[device_id], update)
+            self._rebuild_snapshot(None)
 
     def start_websocket(self) -> None:
         """Start following private Protect updates in the background."""

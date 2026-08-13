@@ -11,7 +11,7 @@ MQTT, a cloud account, and an additional bridge are not required.
 
 ## Current milestone: live measurements
 
-Version `0.2.0` can:
+Version `0.3.0` can:
 
 - configure a local Protect console through the Home Assistant UI;
 - authenticate with a dedicated local Protect user;
@@ -20,6 +20,8 @@ Version `0.2.0` can:
 - register each sensor in the Home Assistant device registry;
 - expose eleven measurement entities with native Home Assistant device and
   state classes; and
+- configure LEDs, night mode, vape sensitivity, sampling, and per-metric
+  alarms directly from Home Assistant; and
 - export field-preserving, anonymized raw sensor data through Home Assistant
   diagnostics.
 
@@ -34,9 +36,26 @@ classification (`safe`, `neutral`, and similar values) as the
 | Humidity | % |
 | Temperature | °C |
 | PM1, PM2.5, PM4, PM10 | µg/m³ |
-| Total volatile organic compounds | ppb |
+| Total volatile organic compounds | index (unitless) |
 | VOC index | index (unitless) |
 | Vape index | index (unitless) |
+
+### Configuration controls
+
+All confirmed writable fields currently exposed by Protect are grouped under
+the device's **Configuration** section:
+
+- status light, activity feedback, LED ring brightness, and LED ring metric;
+- night mode, brightness, start time, and end time;
+- reading interval, vape detection, and vape sensitivity;
+- alarm enable switches for AQI, CO2, humidity, temperature, PM1, PM2.5, PM4,
+  PM10, TVOC, VOC, and vape; and
+- low and high thresholds for every alarm metric.
+
+Protect currently reports unset thresholds as `null`; their Home Assistant
+number entities therefore show `Unknown` until a value is configured. The
+opaque `alertInterval` field is not exposed because Protect provides neither a
+unit nor a supported range for it.
 
 ## Installation
 

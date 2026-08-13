@@ -18,14 +18,11 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import UnifiAirQualityConfigEntry
-from .const import DOMAIN, MANUFACTURER
 from .coordinator import UnifiAirQualityCoordinator
-from .models import AirQualityDevice
+from .entity import UnifiAirQualityEntity
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -103,8 +100,6 @@ SENSOR_DESCRIPTIONS: tuple[UnifiAirQualitySensorEntityDescription, ...] = (
         key="tvoc",
         translation_key="tvoc",
         payload_key="tvoc",
-        device_class=SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS_PARTS,
-        native_unit_of_measurement=UnitOfRatio.PARTS_PER_BILLION,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     UnifiAirQualitySensorEntityDescription(
@@ -136,13 +131,10 @@ async def async_setup_entry(
     )
 
 
-class UnifiAirQualitySensor(
-    CoordinatorEntity[UnifiAirQualityCoordinator], SensorEntity
-):
+class UnifiAirQualitySensor(UnifiAirQualityEntity, SensorEntity):
     """Represent one measurement from a UP-AirQuality device."""
 
     entity_description: UnifiAirQualitySensorEntityDescription
-    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -150,35 +142,8 @@ class UnifiAirQualitySensor(
         device_id: str,
         description: UnifiAirQualitySensorEntityDescription,
     ) -> None:
-        super().__init__(coordinator)
-        self._device_id = device_id
+        super().__init__(coordinator, device_id, description.key)
         self.entity_description = description
-        self._attr_unique_id = f"{device_id}_{description.key}"
-
-        device = self._device
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, device_id)},
-            manufacturer=MANUFACTURER,
-            model=device.model if device else "UP-AirQuality",
-            name=device.name if device else "UP Air Quality",
-            sw_version=device.firmware_version if device else None,
-        )
-
-    @property
-    def _device(self) -> AirQualityDevice | None:
-        return next(
-            (
-                device
-                for device in self.coordinator.data.devices
-                if device.id == self._device_id
-            ),
-            None,
-        )
-
-    @property
-    def available(self) -> bool:
-        device = self._device
-        return super().available and device is not None and device.is_connected
 
     @property
     def native_value(self) -> int | float | None:
@@ -196,7 +161,7 @@ class UnifiAirQualitySensor(
 
     @property
     def _measurement(self) -> dict[str, Any] | None:
-        device = self._device
+        device = self.device
         air_quality = device.raw.get("airQuality") if device else None
         if not isinstance(air_quality, dict):
             return None

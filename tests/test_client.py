@@ -337,13 +337,26 @@ async def test_websocket_add_remove_and_ignored_frames(load_fixture) -> None:
     )
     client._process_websocket_payload(
         _frame({"action": "add", "modelKey": "sensor", "id": "new"})
-        + _frame({"type": "UP-AirQuality", "airQuality": {"co2": 500}})
+        + _frame(
+            {
+                "type": "UP-AirQuality",
+                "airQuality": {"co2": {"status": "high", "value": 1200}},
+            }
+        )
     )
     assert len(client.snapshot.devices) == 2
+    assert client.snapshot.devices[1].active_alarms == (
+        ProtectAlarm("co2", "high", 1200),
+    )
     client._process_websocket_payload(
         _frame({"action": "remove", "modelKey": "sensor", "id": "new"}) + _frame({})
     )
     assert len(client.snapshot.devices) == 1
+    client._process_websocket_payload(
+        _frame({"action": "add", "modelKey": "sensor", "id": "new"})
+        + _frame({"type": "UP-AirQuality", "airQuality": {"co2": 500}})
+    )
+    assert client.snapshot.devices[1].active_alarms == ()
 
 
 async def test_websocket_alarm_start_end_and_unsubscribe(load_fixture) -> None:
@@ -390,6 +403,120 @@ async def test_websocket_alarm_start_end_and_unsubscribe(load_fixture) -> None:
         + _frame(started["data"] | {"id": "second-event"})
     )
     assert alarm_callback.call_count == 2
+
+
+async def test_alarm_sources_are_aggregated_before_emitting_end(load_fixture) -> None:
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    events = json.loads(load_fixture("websocket_alarm_events.json"))
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    await client.async_get_snapshot()
+    callback = MagicMock()
+    client.subscribe_alarm_events(callback)
+
+    started = events["extreme_started"]
+    ended = events["extreme_ended"]
+    client._process_websocket_payload(
+        _frame(started["action"]) + _frame(started["data"])
+    )
+    client._process_websocket_payload(
+        _frame(
+            {
+                "action": "update",
+                "modelKey": "sensor",
+                "id": "anonymous-air-quality-id",
+            }
+        )
+        + _frame({"airQuality": {"co2": {"status": "high", "value": 1250}}})
+    )
+    client._process_websocket_payload(_frame(ended["action"]) + _frame(ended["data"]))
+
+    assert callback.call_count == 1
+    assert client.snapshot.devices[0].active_alarms == (
+        ProtectAlarm("co2", "high", 1250),
+    )
+
+    client._process_websocket_payload(
+        _frame(
+            {
+                "action": "update",
+                "modelKey": "sensor",
+                "id": "anonymous-air-quality-id",
+            }
+        )
+        + _frame({"airQuality": {"co2": {"status": "neutral", "value": 800}}})
+    )
+    assert callback.call_count == 2
+    assert callback.call_args.args[0].transition == "ended"
+    assert client.snapshot.devices[0].active_alarms == ()
+
+
+async def test_multiple_event_ids_keep_metric_active_until_all_end(
+    load_fixture,
+) -> None:
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    events = json.loads(load_fixture("websocket_alarm_events.json"))
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    await client.async_get_snapshot()
+    callback = MagicMock()
+    client.subscribe_alarm_events(callback)
+
+    started = events["extreme_started"]
+    ended = events["extreme_ended"]
+    for event_id in ("first-event", "second-event"):
+        client._process_websocket_payload(
+            _frame(started["action"] | {"id": event_id})
+            + _frame(started["data"] | {"id": event_id})
+        )
+    assert callback.call_count == 1
+
+    client._process_websocket_payload(
+        _frame(ended["action"] | {"id": "first-event"})
+        + _frame(ended["data"] | {"id": "first-event"})
+    )
+    assert callback.call_count == 1
+    assert client.snapshot.devices[0].active_alarms
+
+    client._process_websocket_payload(
+        _frame(ended["action"] | {"id": "second-event"})
+        + _frame(ended["data"] | {"id": "second-event"})
+    )
+    assert callback.call_count == 2
+    assert client.snapshot.devices[0].active_alarms == ()
+
+
+def test_removed_device_alarm_bookkeeping_is_isolated() -> None:
+    client = _client(FakeSession(FakeResponse(), FakeResponse()))
+    removed_key = ("removed-device", "co2")
+    retained_key = ("retained-device", "vape")
+    client._sensor_alarm_states = {
+        removed_key: ProtectAlarm("co2", "high", 1200),
+        retained_key: ProtectAlarm("vape", "detected"),
+    }
+    client._alarm_states = client._sensor_alarm_states.copy()
+    client._alarm_event_devices = {
+        "removed-event": "removed-device",
+        "retained-event": "retained-device",
+    }
+    client._active_alarm_events = {
+        "removed-event": ProtectAlarm("co2", "high", 1200),
+        "retained-event": ProtectAlarm("vape", "detected"),
+    }
+    client._raw_alarm_events = {
+        "removed-event": {"type": "sensorExtremeValues"},
+        "retained-event": {"type": "sensorVape"},
+    }
+
+    client._clear_device_alarm_states("removed-device")
+
+    assert client._sensor_alarm_states == {
+        retained_key: ProtectAlarm("vape", "detected")
+    }
+    assert client._alarm_states == {retained_key: ProtectAlarm("vape", "detected")}
+    assert client._alarm_event_devices == {"retained-event": "retained-device"}
+    assert client._active_alarm_events == {
+        "retained-event": ProtectAlarm("vape", "detected")
+    }
+    assert client._raw_alarm_events == {"retained-event": {"type": "sensorVape"}}
 
 
 async def test_websocket_vape_and_alarm_edge_cases(load_fixture) -> None:

@@ -164,6 +164,7 @@ class PrivateProtectClient:
         self._raw_alarm_events: dict[str, dict[str, Any]] = {}
         self._active_alarm_events: dict[str, ProtectAlarm] = {}
         self._alarm_event_devices: dict[str, str] = {}
+        self._sensor_alarm_states: dict[tuple[str, str], ProtectAlarm] = {}
         self._alarm_states: dict[tuple[str, str], ProtectAlarm] = {}
         self._ws_task: asyncio.Task[None] | None = None
         self.websocket_connected = False
@@ -359,6 +360,7 @@ class PrivateProtectClient:
         operation = action.get("action")
         if operation == "remove":
             self._raw_devices.pop(device_id, None)
+            self._clear_device_alarm_states(device_id)
         elif operation in ("add", "update"):
             current = self._raw_devices.setdefault(device_id, {"id": device_id})
             _deep_merge(current, data)
@@ -396,7 +398,6 @@ class PrivateProtectClient:
 
         self._alarm_event_devices[event_id] = device_id
         is_ended = operation == "remove" or current.get("end") is not None
-        transition = "ended" if is_ended else "started"
         if operation == "update" and not is_ended:
             return
 
@@ -409,7 +410,7 @@ class PrivateProtectClient:
             self._alarm_event_devices.pop(event_id, None)
         else:
             self._active_alarm_events[event_id] = alarm
-        self._set_alarm_state(device_id, alarm, transition == "started")
+        self._refresh_alarm_state(device_id, alarm.metric, alarm)
         self._rebuild_snapshot(action.get("newUpdateId"))
 
     def _process_sensor_alarm_statuses(
@@ -432,33 +433,64 @@ class PrivateProtectClient:
                 and not isinstance(raw_value, bool)
                 else None
             )
-            self._set_alarm_state(
-                device_id,
-                ProtectAlarm(metric, status, value),
-                status.casefold() not in _NON_ALARM_STATUSES,
+            alarm = ProtectAlarm(metric, status, value)
+            key = (device_id, metric)
+            if status.casefold() not in _NON_ALARM_STATUSES:
+                self._sensor_alarm_states[key] = alarm
+            else:
+                self._sensor_alarm_states.pop(key, None)
+            self._refresh_alarm_state(device_id, metric, alarm)
+
+    def _refresh_alarm_state(
+        self, device_id: str, metric: str, transition_alarm: ProtectAlarm
+    ) -> None:
+        """Merge sensor and event sources and emit only aggregate transitions."""
+        key = (device_id, metric)
+        previous = self._alarm_states.get(key)
+
+        current = self._sensor_alarm_states.get(key)
+        if current is None:
+            current = next(
+                (
+                    alarm
+                    for event_id, alarm in self._active_alarm_events.items()
+                    if self._alarm_event_devices.get(event_id) == device_id
+                    and alarm.metric == metric
+                ),
+                None,
             )
 
-    def _set_alarm_state(
-        self, device_id: str, alarm: ProtectAlarm, active: bool
-    ) -> None:
-        """Update one metric state and emit only real state transitions."""
-        key = (device_id, alarm.metric)
-        previous = self._alarm_states.get(key)
-        if active:
-            self._alarm_states[key] = alarm
+        if current is not None:
+            self._alarm_states[key] = current
         else:
             self._alarm_states.pop(key, None)
-        if (previous is not None) == active:
+        if (previous is not None) == (current is not None):
             return
+        event_alarm = current if current is not None else transition_alarm
         normalized = ProtectAlarmEvent(
             device_id=device_id,
-            metric=alarm.metric,
-            transition="started" if active else "ended",
-            status=alarm.status,
-            value=alarm.value,
+            metric=metric,
+            transition="started" if current is not None else "ended",
+            status=event_alarm.status,
+            value=event_alarm.value,
         )
         for callback in tuple(self._alarm_callbacks):
             callback(normalized)
+
+    def _clear_device_alarm_states(self, device_id: str) -> None:
+        """Discard all transient alarm bookkeeping for a removed device."""
+        for key in tuple(self._sensor_alarm_states):
+            if key[0] == device_id:
+                self._sensor_alarm_states.pop(key)
+        for key in tuple(self._alarm_states):
+            if key[0] == device_id:
+                self._alarm_states.pop(key)
+        for event_id, event_device_id in tuple(self._alarm_event_devices.items()):
+            if event_device_id != device_id:
+                continue
+            self._alarm_event_devices.pop(event_id, None)
+            self._active_alarm_events.pop(event_id, None)
+            self._raw_alarm_events.pop(event_id, None)
 
     @staticmethod
     def _alarm_details(

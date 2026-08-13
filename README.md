@@ -151,10 +151,10 @@ docker compose -f dev/compose.yaml logs -f homeassistant
 
 Home Assistant is available at <http://localhost:8123>. The image is pinned to
 `2026.8.1`; update both `dev/compose.yaml` and the test dependency together.
-The unit suite currently exercises 181 scenarios with branch coverage enabled,
+The unit suite currently exercises 184 scenarios with branch coverage enabled,
 including malformed frames, authentication failures, WebSocket reconnects,
-alarm start/end transitions, duplicate suppression, entity lifecycle, and all
-writable control combinations.
+alarm start/end transitions, multi-source duplicate suppression, device
+lifecycle cleanup, entity lifecycle, and all writable control combinations.
 
 ## Removal
 

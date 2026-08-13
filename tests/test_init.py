@@ -40,6 +40,14 @@ async def test_setup_and_unload_entry(hass, device_registry) -> None:
         patch(
             "custom_components.unifi_air_quality.UnifiAirQualityCoordinator"
         ) as coordinator_cls,
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", new=AsyncMock()
+        ) as forward_setups,
+        patch.object(
+            hass.config_entries,
+            "async_unload_platforms",
+            new=AsyncMock(return_value=True),
+        ) as unload_platforms,
     ):
         coordinator = coordinator_cls.return_value
         coordinator.data = snapshot
@@ -50,6 +58,7 @@ async def test_setup_and_unload_entry(hass, device_registry) -> None:
         assert await async_setup_entry(hass, entry)
         get_session.assert_called_once_with(hass)
         client.start_websocket.assert_called_once()
+        forward_setups.assert_awaited_once()
         assert entry.runtime_data.coordinator is coordinator
 
         registered = device_registry.async_get_device({(DOMAIN, "sensor-id")})
@@ -57,4 +66,20 @@ async def test_setup_and_unload_entry(hass, device_registry) -> None:
         assert registered.model == "UP-AirQuality"
 
         assert await async_unload_entry(hass, entry)
+        unload_platforms.assert_awaited_once()
         client.async_close.assert_awaited_once()
+
+
+async def test_unload_stops_when_platform_unload_fails(hass) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, data={})
+    client = AsyncMock()
+    entry.runtime_data = type("RuntimeData", (), {"client": client})()
+
+    with patch.object(
+        hass.config_entries,
+        "async_unload_platforms",
+        new=AsyncMock(return_value=False),
+    ):
+        assert not await async_unload_entry(hass, entry)
+
+    client.async_close.assert_not_awaited()

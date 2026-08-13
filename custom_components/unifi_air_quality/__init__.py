@@ -5,7 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_PASSWORD,
+    CONF_PORT,
+    CONF_USERNAME,
+    Platform,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -13,6 +19,8 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import PrivateProtectClient
 from .const import CONF_VERIFY_SSL, DOMAIN, MANUFACTURER
 from .coordinator import UnifiAirQualityCoordinator
+
+PLATFORMS = [Platform.SENSOR]
 
 
 @dataclass(slots=True)
@@ -54,6 +62,7 @@ async def async_setup_entry(
         )
 
     client.start_websocket()
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
@@ -61,5 +70,7 @@ async def async_unload_entry(
     hass: HomeAssistant, entry: UnifiAirQualityConfigEntry
 ) -> bool:
     """Unload a config entry."""
+    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        return False
     await entry.runtime_data.client.async_close()
     return True

@@ -36,5 +36,20 @@
       "reauth_successful": "Reauthentication was successful.",
       "unique_id_mismatch": "The credentials belong to a different Protect console."
     }
+  },
+  "entity": {
+    "sensor": {
+      "aqi": { "name": "Air quality index" },
+      "co2": { "name": "Carbon dioxide" },
+      "humidity": { "name": "Humidity" },
+      "temperature": { "name": "Temperature" },
+      "pm1": { "name": "PM1" },
+      "pm25": { "name": "PM2.5" },
+      "pm4": { "name": "PM4" },
+      "pm10": { "name": "PM10" },
+      "tvoc": { "name": "Total volatile organic compounds" },
+      "voc_index": { "name": "VOC index" },
+      "vape_index": { "name": "Vape index" }
+    }
   }
 }

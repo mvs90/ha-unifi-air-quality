@@ -9,22 +9,34 @@ MQTT, a cloud account, and an additional bridge are not required.
 > because the Public Integration API does not expose continuous air-quality
 > readings yet. A dedicated API boundary keeps a later migration isolated.
 
-## Current milestone: safe discovery
+## Current milestone: live measurements
 
-Version `0.1.0` can:
+Version `0.2.0` can:
 
 - configure a local Protect console through the Home Assistant UI;
 - authenticate with a dedicated local Protect user;
 - find adopted UP-AirQuality devices in the private bootstrap response;
 - follow private WebSocket updates with a 15-minute bootstrap safety refresh;
-- register the sensors as Home Assistant devices; and
+- register each sensor in the Home Assistant device registry;
+- expose eleven measurement entities with native Home Assistant device and
+  state classes; and
 - export field-preserving, anonymized raw sensor data through Home Assistant
   diagnostics.
 
-It intentionally does **not** create measurement entities yet. Real,
-anonymized diagnostics will be used to verify the wire field names, units, and
-update shapes before CO2, AQI, VOC/TVOC, particulate matter, temperature,
-humidity, and vape-index entities are added.
+The entities update from Protect WebSocket pushes and include Protect's
+classification (`safe`, `neutral`, and similar values) as the
+`protect_status` attribute.
+
+| Entity | Native unit |
+| --- | --- |
+| Air quality index | AQI |
+| Carbon dioxide | ppm |
+| Humidity | % |
+| Temperature | °C |
+| PM1, PM2.5, PM4, PM10 | µg/m³ |
+| Total volatile organic compounds | ppb |
+| VOC index | index (unitless) |
+| Vape index | index (unitless) |
 
 ## Installation
 
@@ -51,7 +63,7 @@ Most consoles use a self-signed certificate. Leave certificate verification
 off for those systems; enable it when the console has a certificate trusted by
 the Home Assistant host.
 
-## Collecting the first diagnostic fixture
+## Diagnostics
 
 After setup, open the integration's menu and select **Download diagnostics**.
 The export removes credentials, network locations, names, MAC addresses,
@@ -94,7 +106,8 @@ the repository in HACS and restart Home Assistant.
 - The private API can change with any Protect update.
 - Username/password authentication is required until the public API exposes
   continuous readings and device-change notifications.
-- Only diagnostics and device discovery are present in the first milestone.
+- Newly adopted or removed sensors require reloading the integration before
+  their entities are added or removed.
 - Automatic console discovery is not implemented.
 - The alpha is installable as a HACS custom repository. Submission to HACS's
   default catalog additionally requires a brand entry in the central Home

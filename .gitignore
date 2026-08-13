@@ -13,3 +13,4 @@ dev/config/*
 !dev/config/configuration.yaml
 *.env
 .DS_Store
+work/

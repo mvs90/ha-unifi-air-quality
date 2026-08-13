@@ -36,5 +36,20 @@
       "reauth_successful": "Die erneute Anmeldung war erfolgreich.",
       "unique_id_mismatch": "Die Zugangsdaten gehören zu einer anderen Protect-Konsole."
     }
+  },
+  "entity": {
+    "sensor": {
+      "aqi": { "name": "Luftqualitätsindex" },
+      "co2": { "name": "Kohlendioxid" },
+      "humidity": { "name": "Luftfeuchtigkeit" },
+      "temperature": { "name": "Temperatur" },
+      "pm1": { "name": "PM1" },
+      "pm25": { "name": "PM2,5" },
+      "pm4": { "name": "PM4" },
+      "pm10": { "name": "PM10" },
+      "tvoc": { "name": "Flüchtige organische Verbindungen gesamt" },
+      "voc_index": { "name": "VOC-Index" },
+      "vape_index": { "name": "Vape-Index" }
+    }
   }
 }

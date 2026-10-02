@@ -11,14 +11,14 @@ MQTT, a cloud account, and an additional bridge are not required.
 
 ## Current milestone: measurements, controls, and alarm triggers
 
-Version `0.4.0` can:
+Version `0.5.0` can:
 
 - configure a local Protect console through the Home Assistant UI;
 - authenticate with a dedicated local Protect user;
 - find adopted UP-AirQuality devices in the private bootstrap response;
 - follow private WebSocket updates with a 15-minute bootstrap safety refresh;
 - register each sensor in the Home Assistant device registry;
-- expose eleven measurement entities with native Home Assistant device and
+- expose twelve measurement entities with native Home Assistant device and
   state classes; and
 - configure LEDs, night mode, vape sensitivity, and per-metric
   alarms directly from Home Assistant;
@@ -51,6 +51,11 @@ the metric, Protect status, and numeric alarm value when supplied—never a
 credential or private Protect event identifier. Duplicate event and sensor
 updates are collapsed into one state transition.
 
+NOx also emits `nox_alarm_started` and `nox_alarm_ended`. The NOx index is read
+directly from Protect's `airQuality.nox` field, even when the Protect app does
+not display it. It is a relative, unitless index rather than a ppm reading.
+Older firmware that omits this field reports an unknown NOx measurement.
+
 | Entity | Native unit |
 | --- | --- |
 | Air quality index | AQI |
@@ -60,6 +65,7 @@ updates are collapsed into one state transition.
 | PM1, PM2.5, PM4, PM10 | µg/m³ |
 | Total volatile organic compounds | index (unitless) |
 | VOC index | index (unitless) |
+| NOx index | index (unitless) |
 | Vape index | index (unitless) |
 
 ### Configuration controls
@@ -71,7 +77,7 @@ the device's **Configuration** section:
 - night mode, brightness, start time, and end time;
 - vape detection and vape sensitivity;
 - alarm enable switches for AQI, CO2, humidity, temperature, PM1, PM2.5, PM4,
-  PM10, TVOC, VOC, and vape; and
+  PM10, TVOC, VOC, NOx, and vape; and
 - supported low and high thresholds for every alarm metric. Protect fixes the
   vape lower threshold at zero, so only its writable high threshold is shown.
 
@@ -115,6 +121,12 @@ an owner account, Ubiquiti cloud SSO, or expose Protect to the internet. The
 password is stored by Home Assistant in the config entry and is never included
 in integration logs or diagnostics.
 
+Expired sessions are renewed automatically with the stored credentials. The
+integration retries a rejected bootstrap request, settings update, or WebSocket
+handshake once. Concurrent requests share the renewed session. Home Assistant
+requests reauthentication only when login or the freshly authenticated request
+is rejected; a temporarily unreachable console remains a connection failure.
+
 Most consoles use a self-signed certificate. Leave certificate verification
 off for those systems; enable it when the console has a certificate trusted by
 the Home Assistant host.
@@ -151,10 +163,12 @@ docker compose -f dev/compose.yaml logs -f homeassistant
 
 Home Assistant is available at <http://localhost:8123>. The image is pinned to
 `2026.8.1`; update both `dev/compose.yaml` and the test dependency together.
-The unit suite currently exercises 184 scenarios with branch coverage enabled,
+The unit suite uses branch coverage with a minimum of 98%,
 including malformed frames, authentication failures, WebSocket reconnects,
 alarm start/end transitions, multi-source duplicate suppression, device
-lifecycle cleanup, entity lifecycle, and all writable control combinations.
+lifecycle cleanup, entity lifecycle, NOx measurements and controls, automatic
+session renewal, concurrent expired requests, and all writable control
+combinations.
 
 ## Removal
 

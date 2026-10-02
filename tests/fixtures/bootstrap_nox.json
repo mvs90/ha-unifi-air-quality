@@ -1,0 +1,24 @@
+{
+  "lastUpdateId": "anonymous-update-id",
+  "nvr": {
+    "id": "anonymous-console-id",
+    "name": "Anonymous Protect"
+  },
+  "sensors": [
+    {
+      "id": "anonymous-air-quality-id",
+      "type": "UP-AirQuality",
+      "isConnected": true,
+      "airQuality": {
+        "nox": { "status": "neutral", "value": 42 }
+      },
+      "airQualitySettings": {
+        "noxSettings": {
+          "isEnabled": true,
+          "lowThreshold": null,
+          "highThreshold": 100
+        }
+      }
+    }
+  ]
+}

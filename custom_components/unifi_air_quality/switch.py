@@ -34,6 +34,7 @@ _ALERT_SETTINGS = {
     "temperature_alerts": "temperatureSettings",
     "tvoc_alerts": "tvocSettings",
     "voc_alerts": "vocSettings",
+    "nox_alerts": "noxSettings",
     "vape_alerts": "vapeSettings",
 }
 

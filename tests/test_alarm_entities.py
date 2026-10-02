@@ -68,9 +68,9 @@ async def test_alarm_platforms_add_all_entities(hass) -> None:
         hass, entry, lambda entities: event_entities.extend(entities)
     )
 
-    assert len(binary_entities) == len(ALARM_DESCRIPTIONS) == 11
+    assert len(binary_entities) == len(ALARM_DESCRIPTIONS) == 12
     assert len(event_entities) == 1
-    assert len(ALARM_EVENT_TYPES) == 22
+    assert len(ALARM_EVENT_TYPES) == 24
 
 
 @pytest.mark.parametrize(

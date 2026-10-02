@@ -42,8 +42,8 @@ async def test_platform_adds_every_measurement(hass) -> None:
 
     await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
 
-    assert len(added) == len(SENSOR_DESCRIPTIONS) == 11
-    assert len({entity.unique_id for entity in added}) == 11
+    assert len(added) == len(SENSOR_DESCRIPTIONS) == 12
+    assert len({entity.unique_id for entity in added}) == 12
 
 
 def test_sensor_reads_value_status_and_device_info() -> None:

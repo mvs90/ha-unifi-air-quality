@@ -49,6 +49,7 @@
       "pm10_alarm": { "name": "PM10-Alarm" },
       "tvoc_alarm": { "name": "TVOC-Alarm" },
       "voc_alarm": { "name": "VOC-Alarm" },
+      "nox_alarm": { "name": "NOx-Alarm" },
       "vape_alarm": { "name": "Vape-Alarm" }
     },
     "event": {
@@ -78,6 +79,8 @@
       "tvoc_high_threshold": { "name": "TVOC-Obergrenze" },
       "voc_low_threshold": { "name": "VOC-Index-Untergrenze" },
       "voc_high_threshold": { "name": "VOC-Index-Obergrenze" },
+      "nox_low_threshold": { "name": "NOx-Index-Untergrenze" },
+      "nox_high_threshold": { "name": "NOx-Index-Obergrenze" },
       "vape_high_threshold": { "name": "Vape-Index-Obergrenze" }
     },
     "select": {
@@ -100,6 +103,7 @@
       "pm10": { "name": "PM10" },
       "tvoc": { "name": "Flüchtige organische Verbindungen gesamt" },
       "voc_index": { "name": "VOC-Index" },
+      "nox_index": { "name": "NOx-Index" },
       "vape_index": { "name": "Vape-Index" }
     },
     "switch": {
@@ -118,6 +122,7 @@
       "temperature_alerts": { "name": "Temperatur-Alarme" },
       "tvoc_alerts": { "name": "TVOC-Alarme" },
       "voc_alerts": { "name": "VOC-Alarme" },
+      "nox_alerts": { "name": "NOx-Alarme" },
       "vape_alerts": { "name": "Vape-Alarme" }
     },
     "time": {

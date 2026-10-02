@@ -56,21 +56,26 @@ class FakeSession:
 
     def post(self, url, **kwargs):
         self.post_calls.append((url, kwargs))
-        return self.post_response
+        return self._next(self.post_response)
 
     def get(self, url, **kwargs):
         self.get_calls.append((url, kwargs))
-        return self.get_response
+        return self._next(self.get_response)
 
     def patch(self, url, **kwargs):
         self.patch_calls.append((url, kwargs))
-        return self.patch_response
+        return self._next(self.patch_response)
 
     async def ws_connect(self, url, **kwargs):
         self.ws_calls.append((url, kwargs))
-        if isinstance(self.websocket, Exception):
-            raise self.websocket
-        return self.websocket
+        websocket = self._next(self.websocket)
+        if isinstance(websocket, Exception):
+            raise websocket
+        return websocket
+
+    @staticmethod
+    def _next(response):
+        return response.pop(0) if isinstance(response, list) else response
 
 
 class FakeMessage:
@@ -641,7 +646,7 @@ async def test_websocket_loop_reauthenticates() -> None:
         side_effect=stop_after_backoff,
     ):
         await client._websocket_loop()
-    assert client._headers == {}
+    client._async_authenticate.assert_not_awaited()
 
 
 async def test_websocket_authenticates_and_uses_last_update_id(load_fixture) -> None:
@@ -705,3 +710,278 @@ def test_rebuild_before_initial_snapshot_is_safe() -> None:
     client = _client(FakeSession(FakeResponse(), FakeResponse()))
     client._rebuild_snapshot("ignored")
     assert client.snapshot is None
+
+
+@pytest.mark.parametrize("status", [401, 403])
+async def test_expired_bootstrap_session_renews_without_reauth(status, load_fixture):
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    session = FakeSession(
+        FakeResponse(headers=[("Set-Cookie", "SESSION=synthetic-renewed")]),
+        [FakeResponse(status=status), FakeResponse(payload=payload)],
+    )
+    client = _client(session)
+    client._headers = {"Cookie": "SESSION=synthetic-expired"}
+
+    snapshot = await client.async_get_snapshot()
+
+    assert snapshot.devices
+    assert len(session.post_calls) == 1
+    assert len(session.get_calls) == 2
+    assert (
+        session.get_calls[0][1]["headers"]["Cookie"]
+        != (session.get_calls[1][1]["headers"]["Cookie"])
+    )
+
+
+@pytest.mark.parametrize("status", [401, 403])
+async def test_rejected_renewed_bootstrap_session_stops_after_one_retry(status):
+    session = FakeSession(
+        FakeResponse(headers=[("Set-Cookie", "SESSION=synthetic-renewed")]),
+        FakeResponse(status=status),
+    )
+    client = _client(session)
+    client._headers["Cookie"] = "synthetic-expired"
+
+    with pytest.raises(ProtectInvalidAuth):
+        await client.async_get_snapshot()
+
+    assert len(session.post_calls) == 1
+    assert len(session.get_calls) == 2
+    assert client._headers == {}
+
+
+@pytest.mark.parametrize(
+    ("response", "error"),
+    [
+        (FakeResponse(status=401), ProtectInvalidAuth),
+        (FakeResponse(status=403), ProtectInvalidAuth),
+        (FakeResponse(error=ClientConnectionError()), ProtectCannotConnect),
+        (FakeResponse(error=TimeoutError()), ProtectCannotConnect),
+    ],
+)
+async def test_failed_session_renewal_keeps_correct_error(response, error):
+    session = FakeSession(response, FakeResponse(status=401))
+    client = _client(session)
+    client._headers["Cookie"] = "synthetic-expired"
+
+    with pytest.raises(error):
+        await client.async_get_snapshot()
+
+    assert len(session.post_calls) == 1
+    assert len(session.get_calls) == 1
+    assert client._headers == {}
+
+
+@pytest.mark.parametrize("status", [401, 403])
+async def test_expired_patch_session_renews_and_applies_update_once(
+    status, load_fixture
+):
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    session = FakeSession(
+        FakeResponse(headers=[("Set-Cookie", "SESSION=synthetic-renewed")]),
+        FakeResponse(payload=payload),
+        patch=[FakeResponse(status=status), FakeResponse()],
+    )
+    client = _client(session)
+    await client.async_get_snapshot()
+    client._headers["Cookie"] = "synthetic-expired"
+    callback = MagicMock()
+    client.set_update_callback(callback)
+    update = {"airQualitySettings": {"ringLedBrightness": 42}}
+
+    await client.async_update_device("anonymous-air-quality-id", update)
+
+    assert len(session.patch_calls) == 2
+    assert [call[1]["json"] for call in session.patch_calls] == [update, update]
+    callback.assert_called_once()
+    assert (
+        client.snapshot.devices[0].raw["airQualitySettings"]["ringLedBrightness"] == 42
+    )
+
+
+async def test_patch_retry_failure_does_not_change_local_state(load_fixture):
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    session = FakeSession(
+        FakeResponse(headers=[("Set-Cookie", "SESSION=synthetic-renewed")]),
+        FakeResponse(payload=payload),
+        patch=FakeResponse(status=403),
+    )
+    client = _client(session)
+    await client.async_get_snapshot()
+    previous = client.snapshot
+    callback = MagicMock()
+    client.set_update_callback(callback)
+
+    with pytest.raises(ProtectInvalidAuth):
+        await client.async_update_device(
+            "anonymous-air-quality-id",
+            {"airQualitySettings": {"ringLedBrightness": 42}},
+        )
+
+    assert len(session.patch_calls) == 2
+    assert client.snapshot is previous
+    callback.assert_not_called()
+
+
+@pytest.mark.parametrize("status", [401, 403])
+async def test_expired_websocket_session_renews_and_reconnects(status):
+    rejected = WSServerHandshakeError(MagicMock(), (), status=status)
+    session = FakeSession(
+        FakeResponse(headers=[("Set-Cookie", "SESSION=synthetic-renewed")]),
+        FakeResponse(),
+        websocket=[rejected, FakeWebsocket([])],
+    )
+    client = _client(session)
+    client._headers["Cookie"] = "synthetic-expired"
+
+    await client._websocket_once()
+
+    assert len(session.post_calls) == 1
+    assert len(session.ws_calls) == 2
+    assert client.websocket_connected
+
+
+async def test_concurrent_expired_requests_share_one_session_renewal(load_fixture):
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    both_rejected = asyncio.Event()
+    rejected_count = 0
+
+    class ConcurrentRejection(FakeResponse):
+        async def __aenter__(self):
+            nonlocal rejected_count
+            rejected_count += 1
+            if rejected_count == 2:
+                both_rejected.set()
+            await both_rejected.wait()
+            return self
+
+    session = FakeSession(
+        FakeResponse(headers=[("Set-Cookie", "SESSION=synthetic-renewed")]),
+        [
+            ConcurrentRejection(status=401),
+            ConcurrentRejection(status=401),
+            FakeResponse(payload=payload),
+            FakeResponse(payload=payload),
+        ],
+    )
+    client = _client(session)
+    client._headers["Cookie"] = "synthetic-expired"
+
+    snapshots = await asyncio.wait_for(
+        asyncio.gather(client.async_get_snapshot(), client.async_get_snapshot()), 2
+    )
+
+    assert all(snapshot.devices for snapshot in snapshots)
+    assert len(session.post_calls) == 1
+    assert len(session.get_calls) == 4
+
+
+async def test_stale_request_cannot_clear_a_newer_session():
+    client = _client(FakeSession(FakeResponse(), FakeResponse()))
+    client._headers["Cookie"] = "synthetic-current"
+    client._auth_generation = 2
+    client._invalidate_session(1)
+    assert client._headers
+
+
+@pytest.mark.parametrize("error", [ProtectCannotConnect(), ProtectInvalidAuth()])
+async def test_websocket_loop_survives_failed_login_and_retries(error):
+    client = _client(FakeSession(FakeResponse(), FakeResponse()))
+    client._websocket_once = AsyncMock(side_effect=[error, None])
+
+    async def backoff(delay):
+        if client._websocket_once.await_count == 2:
+            client._closing = True
+
+    with patch(
+        "custom_components.unifi_air_quality.api.asyncio.sleep", side_effect=backoff
+    ):
+        await client._websocket_loop()
+
+    assert client._websocket_once.await_count == 2
+
+
+async def test_coordinator_refresh_recovers_expiry_while_push_still_works(
+    hass, load_fixture
+):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.unifi_air_quality.coordinator import (
+        UnifiAirQualityCoordinator,
+    )
+
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    session = FakeSession(
+        FakeResponse(headers=[("Set-Cookie", "SESSION=synthetic-renewed")]),
+        [FakeResponse(status=401), FakeResponse(payload=payload)],
+    )
+    client = _client(session)
+    client._headers["Cookie"] = "synthetic-expired"
+    entry = MockConfigEntry()
+    entry.add_to_hass(hass)
+    coordinator = UnifiAirQualityCoordinator(hass, entry, client)
+
+    await coordinator.async_refresh()
+    client._process_websocket_payload(
+        _frame(
+            {"action": "update", "modelKey": "sensor", "id": "anonymous-air-quality-id"}
+        )
+        + _frame({"isConnected": False})
+    )
+    client._process_websocket_payload(
+        _frame(
+            {"action": "update", "modelKey": "sensor", "id": "anonymous-air-quality-id"}
+        )
+        + _frame({"isConnected": True, "airQuality": {"co2": 700}})
+    )
+
+    assert coordinator.last_update_success
+    assert coordinator.data.devices[0].is_connected
+    assert coordinator.data.devices[0].raw["airQuality"]["co2"] == 700
+    assert not hass.config_entries.flow.async_progress()
+
+
+async def test_nox_push_and_event_frames_merge_and_end_without_duplicates(load_fixture):
+    payload = json.loads(load_fixture("bootstrap_nox.json"))
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    await client.async_get_snapshot()
+    callback = MagicMock()
+    client.subscribe_alarm_events(callback)
+
+    sensor_action = {
+        "action": "update",
+        "modelKey": "sensor",
+        "id": "anonymous-air-quality-id",
+    }
+    event_action = {"action": "add", "modelKey": "event", "id": "anonymous-event-id"}
+    client._process_websocket_payload(
+        _frame(sensor_action)
+        + _frame({"airQuality": {"nox": {"status": "high", "value": 120}}})
+    )
+    client._process_websocket_payload(
+        _frame(event_action)
+        + _frame(
+            {
+                "type": "sensorExtremeValues",
+                "device": "anonymous-air-quality-id",
+                "metadata": {"sensorType": "nox", "status": "high", "sensorValue": 120},
+            }
+        )
+    )
+    assert callback.call_count == 1
+    assert callback.call_args.args[0] == ProtectAlarmEvent(
+        "anonymous-air-quality-id", "nox", "started", "high", 120
+    )
+    client._process_websocket_payload(
+        _frame(sensor_action)
+        + _frame({"airQuality": {"nox": {"status": "neutral", "value": 42}}})
+    )
+    assert client.snapshot.devices[0].active_alarms
+    client._process_websocket_payload(
+        _frame(event_action | {"action": "remove"}) + _frame({})
+    )
+    assert callback.call_count == 2
+    assert callback.call_args.args[0].transition == "ended"
+    assert client.snapshot.devices[0].active_alarms == ()
+    assert client.snapshot.devices[0].raw["airQuality"]["nox"]["value"] == 42

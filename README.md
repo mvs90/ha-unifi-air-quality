@@ -55,6 +55,9 @@ NOx also emits `nox_alarm_started` and `nox_alarm_ended`. The NOx index is read
 directly from Protect's `airQuality.nox` field, even when the Protect app does
 not display it. It is a relative, unitless index rather than a ppm reading.
 Older firmware that omits this field reports an unknown NOx measurement.
+Protect may also include the field but return `null`, as observed on the test
+device. In that case the NOx sensor remains unknown until the device firmware
+provides a numeric reading; adding the entity cannot create a missing reading.
 
 | Entity | Native unit |
 | --- | --- |

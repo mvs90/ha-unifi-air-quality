@@ -68,6 +68,7 @@ THRESHOLD_METRICS = (
     ),
     ThresholdMetric("tvoc", "tvocSettings", 0, 1000, 1),
     ThresholdMetric("voc", "vocSettings", 0, 500, 1),
+    ThresholdMetric("nox", "noxSettings", 0, 500, 1),
     ThresholdMetric("vape", "vapeSettings", 0, 100, 1, bounds=("high",)),
 )
 

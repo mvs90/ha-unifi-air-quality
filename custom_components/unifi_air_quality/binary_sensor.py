@@ -45,6 +45,7 @@ ALARM_DESCRIPTIONS: tuple[AlarmBinarySensorDescription, ...] = tuple(
         ("pm10", "pm10p0"),
         ("tvoc", "tvoc"),
         ("voc", "voc"),
+        ("nox", "nox"),
         ("vape", "vape"),
     )
 )

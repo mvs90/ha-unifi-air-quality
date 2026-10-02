@@ -170,6 +170,8 @@ class PrivateProtectClient:
         self.websocket_connected = False
         self._closing = False
         self._write_lock = asyncio.Lock()
+        self._auth_lock = asyncio.Lock()
+        self._auth_generation = 0
 
     @property
     def snapshot(self) -> ProtectSnapshot | None:
@@ -193,7 +195,26 @@ class PrivateProtectClient:
 
         return unsubscribe
 
-    async def _async_authenticate(self) -> None:
+    async def _async_authenticate(
+        self, *, rejected_generation: int | None = None
+    ) -> None:
+        """Create one session, sharing renewals across concurrent requests."""
+        async with self._auth_lock:
+            if "Cookie" in self._headers and (
+                rejected_generation is None
+                or rejected_generation != self._auth_generation
+            ):
+                return
+            self._headers.clear()
+            await self._async_login()
+            self._auth_generation += 1
+
+    def _invalidate_session(self, generation: int) -> None:
+        """Discard only the session rejected by this request."""
+        if generation == self._auth_generation:
+            self._headers.clear()
+
+    async def _async_login(self) -> None:
         try:
             async with self._session.post(
                 f"{self._base_url}{_LOGIN_PATH}",
@@ -224,25 +245,27 @@ class PrivateProtectClient:
 
     async def async_get_snapshot(self) -> ProtectSnapshot:
         """Authenticate if needed and retrieve a raw bootstrap snapshot."""
-        if "Cookie" not in self._headers:
-            await self._async_authenticate()
-        try:
-            async with self._session.get(
-                f"{self._base_url}{_BOOTSTRAP_PATH}",
-                headers=self._headers,
-                ssl=self._ssl,
-            ) as response:
-                if response.status in (401, 403):
-                    self._headers.clear()
-                    raise ProtectInvalidAuth("Protect session is not authorized")
-                response.raise_for_status()
-                payload = await response.json(content_type=None)
-        except ProtectInvalidAuth:
-            raise
-        except (ClientConnectionError, ClientResponseError, TimeoutError) as err:
-            raise ProtectCannotConnect("Unable to fetch Protect bootstrap") from err
-        except ValueError as err:
-            raise ProtectProtocolError("Protect bootstrap is not JSON") from err
+        await self._async_authenticate()
+        for attempt in range(2):
+            generation = self._auth_generation
+            try:
+                async with self._session.get(
+                    f"{self._base_url}{_BOOTSTRAP_PATH}",
+                    headers=self._headers.copy(),
+                    ssl=self._ssl,
+                ) as response:
+                    if response.status not in (401, 403):
+                        response.raise_for_status()
+                        payload = await response.json(content_type=None)
+                        break
+            except (ClientConnectionError, ClientResponseError, TimeoutError) as err:
+                raise ProtectCannotConnect("Unable to fetch Protect bootstrap") from err
+            except ValueError as err:
+                raise ProtectProtocolError("Protect bootstrap is not JSON") from err
+            if attempt:
+                self._invalidate_session(generation)
+                raise ProtectInvalidAuth("Protect session is not authorized")
+            await self._async_authenticate(rejected_generation=generation)
 
         if not isinstance(payload, dict):
             raise ProtectProtocolError("Protect bootstrap must be an object")
@@ -263,25 +286,33 @@ class PrivateProtectClient:
             raise ProtectProtocolError("Sensor update must not be empty")
 
         async with self._write_lock:
-            if "Cookie" not in self._headers:
-                await self._async_authenticate()
-            try:
-                async with self._session.patch(
-                    f"{self._base_url}{_SENSOR_PATH.format(device_id=quote(device_id))}",
-                    json=dict(update),
-                    headers=self._headers,
-                    ssl=self._ssl,
-                ) as response:
-                    if response.status in (401, 403):
-                        self._headers.clear()
-                        raise ProtectInvalidAuth(
-                            "Protect session is not authorized to update the sensor"
-                        )
-                    response.raise_for_status()
-            except ProtectInvalidAuth:
-                raise
-            except (ClientConnectionError, ClientResponseError, TimeoutError) as err:
-                raise ProtectCannotConnect("Unable to update Protect sensor") from err
+            await self._async_authenticate()
+            for attempt in range(2):
+                generation = self._auth_generation
+                try:
+                    async with self._session.patch(
+                        f"{self._base_url}{_SENSOR_PATH.format(device_id=quote(device_id))}",
+                        json=dict(update),
+                        headers=self._headers.copy(),
+                        ssl=self._ssl,
+                    ) as response:
+                        if response.status not in (401, 403):
+                            response.raise_for_status()
+                            break
+                except (
+                    ClientConnectionError,
+                    ClientResponseError,
+                    TimeoutError,
+                ) as err:
+                    raise ProtectCannotConnect(
+                        "Unable to update Protect sensor"
+                    ) from err
+                if attempt:
+                    self._invalidate_session(generation)
+                    raise ProtectInvalidAuth(
+                        "Protect session is not authorized to update the sensor"
+                    )
+                await self._async_authenticate(rejected_generation=generation)
 
             _deep_merge(self._raw_devices[device_id], update)
             self._rebuild_snapshot(None)
@@ -300,13 +331,13 @@ class PrivateProtectClient:
                 backoff = 1
             except asyncio.CancelledError:
                 raise
-            except ProtectInvalidAuth:
-                self._headers.clear()
-                try:
-                    await self._async_authenticate()
-                except ProtectApiError:
-                    pass
-            except (ClientConnectionError, WSServerHandshakeError, TimeoutError):
+            except (
+                ProtectInvalidAuth,
+                ProtectCannotConnect,
+                ClientConnectionError,
+                WSServerHandshakeError,
+                TimeoutError,
+            ):
                 pass
             finally:
                 self.websocket_connected = False
@@ -315,23 +346,30 @@ class PrivateProtectClient:
                 backoff = min(backoff * 2, 30)
 
     async def _websocket_once(self) -> None:
-        if "Cookie" not in self._headers:
-            await self._async_authenticate()
+        await self._async_authenticate()
         url = self._ws_url
         if self._snapshot and self._snapshot.last_update_id:
             url = f"{url}?lastUpdateId={quote(self._snapshot.last_update_id)}"
-        try:
-            websocket = await self._session.ws_connect(
-                url,
-                headers=self._headers,
-                ssl=self._ssl,
-                heartbeat=30,
-                timeout=ClientWSTimeout(ws_close=10),
-            )
-        except WSServerHandshakeError as err:
-            if err.status in (401, 403):
-                raise ProtectInvalidAuth("WebSocket session is not authorized") from err
-            raise
+        for attempt in range(2):
+            generation = self._auth_generation
+            try:
+                websocket = await self._session.ws_connect(
+                    url,
+                    headers=self._headers.copy(),
+                    ssl=self._ssl,
+                    heartbeat=30,
+                    timeout=ClientWSTimeout(ws_close=10),
+                )
+                break
+            except WSServerHandshakeError as err:
+                if err.status not in (401, 403):
+                    raise
+                if attempt:
+                    self._invalidate_session(generation)
+                    raise ProtectInvalidAuth(
+                        "WebSocket session is not authorized"
+                    ) from err
+            await self._async_authenticate(rejected_generation=generation)
 
         self.websocket_connected = True
         async with websocket:

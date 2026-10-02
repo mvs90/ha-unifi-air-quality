@@ -109,6 +109,12 @@ SENSOR_DESCRIPTIONS: tuple[UnifiAirQualitySensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
     ),
     UnifiAirQualitySensorEntityDescription(
+        key="nox_index",
+        translation_key="nox_index",
+        payload_key="nox",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    UnifiAirQualitySensorEntityDescription(
         key="vape_index",
         translation_key="vape_index",
         payload_key="vape",

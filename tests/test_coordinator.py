@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.unifi_air_quality.api import (
     ProtectCannotConnect,
@@ -13,6 +12,8 @@ from custom_components.unifi_air_quality.api import (
 )
 from custom_components.unifi_air_quality.coordinator import UnifiAirQualityCoordinator
 from custom_components.unifi_air_quality.models import ProtectSnapshot
+
+from .ha_test_helpers import MockConfigEntry
 
 
 def _snapshot() -> ProtectSnapshot:

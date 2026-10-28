@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, patch
 from homeassistant.config_entries import SOURCE_REAUTH, SOURCE_USER
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.data_entry_flow import FlowResultType
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.unifi_air_quality.api import (
     ProtectCannotConnect,
@@ -14,6 +13,8 @@ from custom_components.unifi_air_quality.api import (
 )
 from custom_components.unifi_air_quality.const import CONF_VERIFY_SSL, DOMAIN
 from custom_components.unifi_air_quality.models import ProtectSnapshot
+
+from .ha_test_helpers import MockConfigEntry
 
 USER_INPUT = {
     CONF_HOST: "protect.local",

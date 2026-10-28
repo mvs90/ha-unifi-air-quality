@@ -9,13 +9,28 @@ permissions:
 
 jobs:
   tests:
+    name: Home Assistant ${{ matrix.homeassistant }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - homeassistant: "2026.8.0"
+            helpers: "0.13.354"
+          - homeassistant: "2026.8.1"
+            helpers: "0.13.355"
+          - homeassistant: "2026.10.4"
+            helpers: "0.13.375"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
           cache: pip
-      - run: pip install -e '.[test]'
+      - run: >-
+          pip install -e .
+          'homeassistant==${{ matrix.homeassistant }}'
+          'pytest-homeassistant-custom-component==${{ matrix.helpers }}'
+          'ruff>=0.12'
       - run: ruff check .
       - run: pytest

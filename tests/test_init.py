@@ -3,11 +3,13 @@
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from homeassistant.helpers import device_registry as dr
 
 from custom_components.unifi_air_quality import async_setup_entry, async_unload_entry
 from custom_components.unifi_air_quality.const import CONF_VERIFY_SSL, DOMAIN
 from custom_components.unifi_air_quality.models import AirQualityDevice, ProtectSnapshot
+
+from .ha_test_helpers import MockConfigEntry
 
 
 async def test_setup_and_unload_entry(hass, device_registry) -> None:
@@ -61,9 +63,10 @@ async def test_setup_and_unload_entry(hass, device_registry) -> None:
         forward_setups.assert_awaited_once()
         assert entry.runtime_data.coordinator is coordinator
 
-        registered = device_registry.async_get_device({(DOMAIN, "sensor-id")})
-        assert registered is not None
-        assert registered.model == "UP-AirQuality"
+        registered = dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+        assert len(registered) == 1
+        assert registered[0].identifiers == {(DOMAIN, "sensor-id")}
+        assert registered[0].model == "UP-AirQuality"
 
         assert await async_unload_entry(hass, entry)
         unload_platforms.assert_awaited_once()

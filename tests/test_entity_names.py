@@ -9,10 +9,11 @@ from homeassistant.components.config import entity_registry as registry_api
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.translation import async_get_translations
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.unifi_air_quality.api import snapshot_from_bootstrap
 from custom_components.unifi_air_quality.const import CONF_VERIFY_SSL, DOMAIN
+
+from .ha_test_helpers import MockConfigEntry
 
 INTEGRATION_PATH = Path(__file__).parents[1] / "custom_components" / DOMAIN
 LANGUAGES = sorted(
@@ -156,9 +157,12 @@ async def test_existing_names_are_repaired_without_changing_ids_or_custom_names(
         )
         assert registry.async_get(renamed.entity_id).original_name == "VOC index"
         assert registry.async_get(renamed.entity_id).name == "My custom VOC"
-        assert hass.states.get(renamed.entity_id).attributes["friendly_name"] == (
-            "My custom VOC"
-        )
+        # HA 2026.11 includes the device name even for user-named entities.
+        # Accept exactly the two supported core renderings, not duplicates.
+        assert hass.states.get(renamed.entity_id).attributes["friendly_name"] in {
+            "My custom VOC",
+            "UP-AirQuality My custom VOC",
+        }
 
         websocket = await hass_ws_client(hass)
         assert registry_api.async_setup(hass)
@@ -173,9 +177,10 @@ async def test_existing_names_are_repaired_without_changing_ids_or_custom_names(
         response = await websocket.receive_json()
         assert response["success"]
         await hass.async_block_till_done()
-        assert hass.states.get(generic.entity_id).attributes["friendly_name"] == (
-            "My custom TVOC"
-        )
+        assert hass.states.get(generic.entity_id).attributes["friendly_name"] in {
+            "My custom TVOC",
+            "UP-AirQuality My custom TVOC",
+        }
         assert await hass.config_entries.async_reload(entry.entry_id)
         await hass.async_block_till_done()
         assert registry.async_get(generic.entity_id).name == "My custom TVOC"

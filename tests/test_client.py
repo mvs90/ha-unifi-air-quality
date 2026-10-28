@@ -904,11 +904,11 @@ async def test_websocket_loop_survives_failed_login_and_retries(error):
 async def test_coordinator_refresh_recovers_expiry_while_push_still_works(
     hass, load_fixture
 ):
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
-
     from custom_components.unifi_air_quality.coordinator import (
         UnifiAirQualityCoordinator,
     )
+
+    from .ha_test_helpers import MockConfigEntry
 
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     session = FakeSession(

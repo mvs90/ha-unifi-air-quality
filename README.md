@@ -16,7 +16,7 @@ MQTT, a cloud account, and an additional bridge are not required.
 
 ## Current milestone: measurements, controls, and alarm triggers
 
-Version `0.5.2` can:
+Version `0.5.3` can:
 
 - configure a local Protect console through the Home Assistant UI;
 - authenticate with a dedicated local Protect user;
@@ -167,7 +167,7 @@ the reviewed diagnostic file.
 
 ## Development
 
-Requirements: Docker and Python 3.13 or newer.
+Requirements: Docker and Python 3.14.2 or newer for the current test environment.
 
 ```bash
 python3 -m venv .venv
@@ -184,8 +184,24 @@ docker compose -f dev/compose.yaml restart homeassistant
 docker compose -f dev/compose.yaml logs -f homeassistant
 ```
 
-Home Assistant is available at <http://localhost:8123>. The image is pinned to
-`2026.8.1`; update both `dev/compose.yaml` and the test dependency together.
+Home Assistant is available at <http://localhost:8123>. The image and default
+test dependencies are pinned to `2026.10.4`. CI also checks `2026.8.0` (the
+declared minimum) and the previous `2026.8.1` baseline with matching test helpers.
+
+Run the full suite in a disposable Home Assistant container, without mounting
+live configuration or publishing any ports:
+
+```bash
+docker run --rm -v "$PWD:/work:ro" --entrypoint python3 \
+  ghcr.io/home-assistant/home-assistant:2026.10.4 /work/dev/run_container_tests.py
+```
+
+The same runner supports development images and the new official Home Assistant
+test-helper package. The preview helper source is pinned for reproducibility;
+use `HA_TEST_HELPERS` to select the matching package when testing a newer image.
+See [the compatibility report](docs/hacs-readiness.md#home-assistant-compatibility)
+for the exact preview build checked. Disposable tests never mount the real
+Home Assistant configuration and do not contact Protect.
 The unit suite uses branch coverage with a minimum of 98%,
 including malformed frames, authentication failures, WebSocket reconnects,
 alarm start/end transitions, multi-source duplicate suppression, device

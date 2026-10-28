@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.3
+
+- Verify the full 257-test suite against Home Assistant 2026.10.4 and preview
+  2026.11.0.dev202610281312, with 99.17% coverage in both container runtimes.
+- Add CI coverage of the declared 2026.8.0 minimum, the previous 2026.8.1
+  baseline, and 2026.10.4, each with matching Home Assistant test helpers.
+- Update the default developer container and test dependencies to 2026.10.4.
+- Support the preview's official test-helper package, updated device-registry
+  API, and device-prefixed display names while preserving exact entity IDs and
+  user-assigned registry names.
+- Add an isolated container test runner and refresh the HACS readiness report.
+- Confirm real bootstrap and WebSocket communication without device-setting
+  writes or new live alarms. The integration's runtime behavior is unchanged.
+
 ## 0.5.2
 
 - Adopt the maintainer-selected sensor-and-house logo and ship local brand

@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.helpers import entity_registry as er
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.unifi_air_quality.api import snapshot_from_bootstrap
 from custom_components.unifi_air_quality.const import CONF_VERIFY_SSL, DOMAIN
@@ -22,6 +21,8 @@ from custom_components.unifi_air_quality.switch import (
     SWITCH_DESCRIPTIONS,
     AirQualitySwitch,
 )
+
+from .ha_test_helpers import MockConfigEntry
 
 
 def _coordinator(load_fixture):

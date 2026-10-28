@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.unifi_air_quality import UnifiAirQualityRuntimeData
 from custom_components.unifi_air_quality.const import DOMAIN
@@ -18,6 +17,8 @@ from custom_components.unifi_air_quality.models import (
     ProtectAlarm,
     ProtectSnapshot,
 )
+
+from .ha_test_helpers import MockConfigEntry
 
 
 def test_sanitize_raw_preserves_shape_and_measurements(load_fixture) -> None:

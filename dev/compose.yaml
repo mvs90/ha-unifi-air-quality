@@ -1,7 +1,7 @@
 services:
   homeassistant:
     container_name: unifi-air-quality-ha-dev
-    image: ghcr.io/home-assistant/home-assistant:2026.8.1
+    image: ghcr.io/home-assistant/home-assistant:2026.10.4
     restart: unless-stopped
     ports:
       - "8123:8123"

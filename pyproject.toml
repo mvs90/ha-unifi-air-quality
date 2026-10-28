@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ha-unifi-air-quality"
-version = "0.5.2"
+version = "0.5.3"
 description = "Home Assistant custom integration for UniFi Protect UP-AirQuality"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -18,11 +18,11 @@ classifiers = [
 
 [project.optional-dependencies]
 test = [
-  "homeassistant==2026.8.1",
+  "homeassistant==2026.10.4",
   "pytest==9.0.3",
   "pytest-asyncio==1.4.0",
   "pytest-cov==7.1.0",
-  "pytest-homeassistant-custom-component==0.13.355",
+  "pytest-homeassistant-custom-component==0.13.375",
   "ruff>=0.12",
 ]
 

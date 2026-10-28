@@ -1,7 +1,6 @@
 {
   "domain": "unifi_air_quality",
   "name": "UniFi Protect Air Quality",
-  "categories": ["sensors.air_quality", "sensors.temperature_humidity"],
   "codeowners": ["@mvs90"],
   "config_flow": true,
   "documentation": "https://github.com/mvs90/ha-unifi-air-quality",

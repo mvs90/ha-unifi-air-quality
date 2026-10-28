@@ -25,6 +25,9 @@ Ruff, HACS, and Hassfest must all pass on the final release commit. Publish
 the full `v0.5.2` GitHub release after those checks, rather than only a tag,
 so the submitted release includes the artwork and the complete validator.
 
+Optional integration categories are omitted because the current Hassfest
+validator rejects that manifest field. No validation check is bypassed.
+
 ## Submission
 
 The repository is not yet included in `hacs/default`. After the release
@@ -39,4 +42,3 @@ maintainer approval.
 - [HACS integration requirements](https://www.hacs.xyz/docs/publish/integration/)
 - [HACS default-catalog inclusion](https://www.hacs.xyz/docs/publish/include/)
 - [Home Assistant local brand images](https://contributors.home-assistant.io/blog/2026/02/24/brands-proxy-api/)
-- [Integration categories](https://contributors.home-assistant.io/core/integrations/categories/)

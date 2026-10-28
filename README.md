@@ -1,5 +1,10 @@
 # UniFi Protect Air Quality for Home Assistant
 
+<p align="center">
+  <img src="custom_components/unifi_air_quality/brand/icon@2x.png"
+       alt="UniFi Protect Air Quality integration logo" width="180">
+</p>
+
 An experimental, local-push Home Assistant custom integration for the UniFi
 Protect **UP-AirQuality** sensor. It communicates directly with the console;
 MQTT, a cloud account, and an additional bridge are not required.
@@ -11,7 +16,7 @@ MQTT, a cloud account, and an additional bridge are not required.
 
 ## Current milestone: measurements, controls, and alarm triggers
 
-Version `0.5.1` can:
+Version `0.5.2` can:
 
 - configure a local Protect console through the Home Assistant UI;
 - authenticate with a dedicated local Protect user;
@@ -202,8 +207,19 @@ the repository in HACS and restart Home Assistant.
   their entities are added or removed.
 - Automatic console discovery is not implemented.
 - The alpha is installable as a HACS custom repository. Submission to HACS's
-  default catalog additionally requires a brand entry in the central Home
-  Assistant brands repository and a stable GitHub release.
+  default catalog is a separate review process. The integration ships its
+  own `brand/` images and runs HACS validation without ignored checks; a
+  separate entry in the central Home Assistant brands repository is not
+  required. See [HACS submission readiness](docs/hacs-readiness.md).
+
+## Acknowledgements
+
+This integration builds on the groundwork shared by
+[Tommo-101](https://github.com/Tommo-101) in
+[UPAQ-MQTT](https://github.com/Tommo-101/UPAQ-MQTT).
+Thank you for the original work and for sharing the approach to accessing
+UP-AirQuality data through UniFi Protect. That contribution helped make this
+direct Home Assistant integration possible.
 
 This project is not affiliated with Ubiquiti Inc. UniFi and UniFi Protect are
 trademarks of their respective owner.

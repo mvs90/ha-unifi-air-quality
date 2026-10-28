@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.2
+
+- Adopt the maintainer-selected sensor-and-house logo and ship local brand
+  icons at 256 and 512 pixels, with transparent backgrounds.
+- Enable the complete HACS validator, including the previously ignored brands
+  check, and add air-quality and temperature/humidity integration categories.
+- Document HACS submission readiness and the local branding mechanism.
+- Credit and thank Tommo-101 for the foundational UPAQ-MQTT work.
+
 ## 0.5.1
 
 - Ship the English translation catalog required by custom integrations. Fix

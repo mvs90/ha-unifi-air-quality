@@ -1,0 +1,273 @@
+{
+  "title": "UniFi Protect Air Quality",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Підключення до UniFi Protect",
+        "description": "Використовуйте окремий локальний обліковий запис UniFi OS із доступом для читання в Protect.",
+        "data": {
+          "host": "Хост",
+          "port": "Порт",
+          "username": "Ім’я локального користувача",
+          "password": "Пароль",
+          "verify_ssl": "Перевіряти сертифікат TLS"
+        },
+        "data_description": {
+          "host": "Лише ім’я хоста або IP-адреса, без https://.",
+          "verify_ssl": "Увімкніть лише тоді, коли Home Assistant довіряє сертифікату консолі."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Повторна автентифікація в UniFi Protect",
+        "description": "Введіть поточний пароль налаштованого локального облікового запису.",
+        "data": {
+          "password": "Пароль"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Не вдалося підключитися до UniFi Protect.",
+      "invalid_auth": "Неправильне ім’я користувача або пароль.",
+      "invalid_response": "Protect повернув непідтримувану відповідь.",
+      "unknown": "Неочікувана помилка. Перевірте журнали Home Assistant."
+    },
+    "abort": {
+      "already_configured": "Цю консоль Protect уже налаштовано.",
+      "reauth_successful": "Повторна автентифікація успішна.",
+      "unique_id_mismatch": "Облікові дані належать іншій консолі Protect."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "aqi_alarm": {
+        "name": "Тривога: Індекс якості повітря"
+      },
+      "co2_alarm": {
+        "name": "Тривога: Вуглекислий газ"
+      },
+      "humidity_alarm": {
+        "name": "Тривога: Вологість"
+      },
+      "temperature_alarm": {
+        "name": "Тривога: Температура"
+      },
+      "pm1_alarm": {
+        "name": "Тривога: PM1"
+      },
+      "pm25_alarm": {
+        "name": "Тривога: PM2.5"
+      },
+      "pm4_alarm": {
+        "name": "Тривога: PM4"
+      },
+      "pm10_alarm": {
+        "name": "Тривога: PM10"
+      },
+      "tvoc_alarm": {
+        "name": "Тривога: Загальний вміст летких органічних сполук"
+      },
+      "voc_alarm": {
+        "name": "Тривога: Індекс ЛОС"
+      },
+      "nox_alarm": {
+        "name": "Тривога: Індекс NOx"
+      },
+      "vape_alarm": {
+        "name": "Тривога: Індекс вейпінгу"
+      }
+    },
+    "event": {
+      "air_quality_alarm": {
+        "name": "Подія тривоги якості повітря"
+      }
+    },
+    "number": {
+      "ring_led_brightness": {
+        "name": "Яскравість світлодіодного кільця"
+      },
+      "night_mode_brightness": {
+        "name": "Яскравість у нічному режимі"
+      },
+      "vape_sensitivity": {
+        "name": "Чутливість до вейпінгу"
+      },
+      "aqi_low_threshold": {
+        "name": "Нижній поріг: Індекс якості повітря"
+      },
+      "aqi_high_threshold": {
+        "name": "Верхній поріг: Індекс якості повітря"
+      },
+      "co2_low_threshold": {
+        "name": "Нижній поріг: Вуглекислий газ"
+      },
+      "co2_high_threshold": {
+        "name": "Верхній поріг: Вуглекислий газ"
+      },
+      "humidity_low_threshold": {
+        "name": "Нижній поріг: Вологість"
+      },
+      "humidity_high_threshold": {
+        "name": "Верхній поріг: Вологість"
+      },
+      "pm1_low_threshold": {
+        "name": "Нижній поріг: PM1"
+      },
+      "pm1_high_threshold": {
+        "name": "Верхній поріг: PM1"
+      },
+      "pm25_low_threshold": {
+        "name": "Нижній поріг: PM2.5"
+      },
+      "pm25_high_threshold": {
+        "name": "Верхній поріг: PM2.5"
+      },
+      "pm4_low_threshold": {
+        "name": "Нижній поріг: PM4"
+      },
+      "pm4_high_threshold": {
+        "name": "Верхній поріг: PM4"
+      },
+      "pm10_low_threshold": {
+        "name": "Нижній поріг: PM10"
+      },
+      "pm10_high_threshold": {
+        "name": "Верхній поріг: PM10"
+      },
+      "temperature_low_threshold": {
+        "name": "Нижній поріг: Температура"
+      },
+      "temperature_high_threshold": {
+        "name": "Верхній поріг: Температура"
+      },
+      "tvoc_low_threshold": {
+        "name": "Нижній поріг: Загальний вміст летких органічних сполук"
+      },
+      "tvoc_high_threshold": {
+        "name": "Верхній поріг: Загальний вміст летких органічних сполук"
+      },
+      "voc_low_threshold": {
+        "name": "Нижній поріг: Індекс ЛОС"
+      },
+      "voc_high_threshold": {
+        "name": "Верхній поріг: Індекс ЛОС"
+      },
+      "nox_low_threshold": {
+        "name": "Нижній поріг: Індекс NOx"
+      },
+      "nox_high_threshold": {
+        "name": "Верхній поріг: Індекс NOx"
+      },
+      "vape_high_threshold": {
+        "name": "Верхній поріг: Індекс вейпінгу"
+      }
+    },
+    "select": {
+      "ring_led_metric": {
+        "name": "Показник світлодіодного кільця",
+        "state": {
+          "carbon_dioxide": "Вуглекислий газ",
+          "air_quality": "Індекс якості повітря"
+        }
+      }
+    },
+    "sensor": {
+      "aqi": {
+        "name": "Індекс якості повітря"
+      },
+      "co2": {
+        "name": "Вуглекислий газ"
+      },
+      "humidity": {
+        "name": "Вологість"
+      },
+      "temperature": {
+        "name": "Температура"
+      },
+      "pm1": {
+        "name": "PM1"
+      },
+      "pm25": {
+        "name": "PM2.5"
+      },
+      "pm4": {
+        "name": "PM4"
+      },
+      "pm10": {
+        "name": "PM10"
+      },
+      "tvoc": {
+        "name": "Загальний вміст летких органічних сполук"
+      },
+      "voc_index": {
+        "name": "Індекс ЛОС"
+      },
+      "nox_index": {
+        "name": "Індекс NOx"
+      },
+      "vape_index": {
+        "name": "Індекс вейпінгу"
+      }
+    },
+    "switch": {
+      "status_light": {
+        "name": "Індикатор стану"
+      },
+      "ring_led": {
+        "name": "Світлодіодне кільце"
+      },
+      "activity_feedback": {
+        "name": "Індикація активності"
+      },
+      "night_mode": {
+        "name": "Нічний режим"
+      },
+      "vape_detection": {
+        "name": "Виявлення вейпінгу"
+      },
+      "aqi_alerts": {
+        "name": "Сповіщення: Індекс якості повітря"
+      },
+      "co2_alerts": {
+        "name": "Сповіщення: Вуглекислий газ"
+      },
+      "humidity_alerts": {
+        "name": "Сповіщення: Вологість"
+      },
+      "pm1_alerts": {
+        "name": "Сповіщення: PM1"
+      },
+      "pm25_alerts": {
+        "name": "Сповіщення: PM2.5"
+      },
+      "pm4_alerts": {
+        "name": "Сповіщення: PM4"
+      },
+      "pm10_alerts": {
+        "name": "Сповіщення: PM10"
+      },
+      "temperature_alerts": {
+        "name": "Сповіщення: Температура"
+      },
+      "tvoc_alerts": {
+        "name": "Сповіщення: Загальний вміст летких органічних сполук"
+      },
+      "voc_alerts": {
+        "name": "Сповіщення: Індекс ЛОС"
+      },
+      "nox_alerts": {
+        "name": "Сповіщення: Індекс NOx"
+      },
+      "vape_alerts": {
+        "name": "Сповіщення: Індекс вейпінгу"
+      }
+    },
+    "time": {
+      "night_mode_start": {
+        "name": "Початок нічного режиму"
+      },
+      "night_mode_end": {
+        "name": "Кінець нічного режиму"
+      }
+    }
+  }
+}

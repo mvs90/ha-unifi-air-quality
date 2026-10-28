@@ -1,0 +1,273 @@
+{
+  "title": "UniFi Protect Air Quality",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Připojit k UniFi Protect",
+        "description": "Použijte samostatný místní účet UniFi OS s oprávněním ke čtení v Protect.",
+        "data": {
+          "host": "Hostitel",
+          "port": "Port",
+          "username": "Místní uživatelské jméno",
+          "password": "Heslo",
+          "verify_ssl": "Ověřit certifikát TLS"
+        },
+        "data_description": {
+          "host": "Pouze název hostitele nebo IP adresa, bez https://.",
+          "verify_ssl": "Povolte pouze tehdy, pokud Home Assistant důvěřuje certifikátu konzole."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Znovu se ověřit v UniFi Protect",
+        "description": "Zadejte aktuální heslo nakonfigurovaného místního účtu.",
+        "data": {
+          "password": "Heslo"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Připojení k UniFi Protect se nezdařilo.",
+      "invalid_auth": "Uživatelské jméno nebo heslo není platné.",
+      "invalid_response": "Protect vrátil nepodporovanou odpověď.",
+      "unknown": "Neočekávaná chyba. Zkontrolujte protokoly Home Assistant."
+    },
+    "abort": {
+      "already_configured": "Tato konzole Protect je již nakonfigurována.",
+      "reauth_successful": "Opětovné ověření bylo úspěšné.",
+      "unique_id_mismatch": "Přihlašovací údaje patří jiné konzoli Protect."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "aqi_alarm": {
+        "name": "Alarm: Index kvality vzduchu"
+      },
+      "co2_alarm": {
+        "name": "Alarm: Oxid uhličitý"
+      },
+      "humidity_alarm": {
+        "name": "Alarm: Vlhkost"
+      },
+      "temperature_alarm": {
+        "name": "Alarm: Teplota"
+      },
+      "pm1_alarm": {
+        "name": "Alarm: PM1"
+      },
+      "pm25_alarm": {
+        "name": "Alarm: PM2.5"
+      },
+      "pm4_alarm": {
+        "name": "Alarm: PM4"
+      },
+      "pm10_alarm": {
+        "name": "Alarm: PM10"
+      },
+      "tvoc_alarm": {
+        "name": "Alarm: Celkové těkavé organické látky"
+      },
+      "voc_alarm": {
+        "name": "Alarm: Index VOC"
+      },
+      "nox_alarm": {
+        "name": "Alarm: Index NOx"
+      },
+      "vape_alarm": {
+        "name": "Alarm: Index vapování"
+      }
+    },
+    "event": {
+      "air_quality_alarm": {
+        "name": "Událost alarmu kvality vzduchu"
+      }
+    },
+    "number": {
+      "ring_led_brightness": {
+        "name": "Jas LED prstence"
+      },
+      "night_mode_brightness": {
+        "name": "Jas nočního režimu"
+      },
+      "vape_sensitivity": {
+        "name": "Citlivost detekce vapování"
+      },
+      "aqi_low_threshold": {
+        "name": "Dolní mez: Index kvality vzduchu"
+      },
+      "aqi_high_threshold": {
+        "name": "Horní mez: Index kvality vzduchu"
+      },
+      "co2_low_threshold": {
+        "name": "Dolní mez: Oxid uhličitý"
+      },
+      "co2_high_threshold": {
+        "name": "Horní mez: Oxid uhličitý"
+      },
+      "humidity_low_threshold": {
+        "name": "Dolní mez: Vlhkost"
+      },
+      "humidity_high_threshold": {
+        "name": "Horní mez: Vlhkost"
+      },
+      "pm1_low_threshold": {
+        "name": "Dolní mez: PM1"
+      },
+      "pm1_high_threshold": {
+        "name": "Horní mez: PM1"
+      },
+      "pm25_low_threshold": {
+        "name": "Dolní mez: PM2.5"
+      },
+      "pm25_high_threshold": {
+        "name": "Horní mez: PM2.5"
+      },
+      "pm4_low_threshold": {
+        "name": "Dolní mez: PM4"
+      },
+      "pm4_high_threshold": {
+        "name": "Horní mez: PM4"
+      },
+      "pm10_low_threshold": {
+        "name": "Dolní mez: PM10"
+      },
+      "pm10_high_threshold": {
+        "name": "Horní mez: PM10"
+      },
+      "temperature_low_threshold": {
+        "name": "Dolní mez: Teplota"
+      },
+      "temperature_high_threshold": {
+        "name": "Horní mez: Teplota"
+      },
+      "tvoc_low_threshold": {
+        "name": "Dolní mez: Celkové těkavé organické látky"
+      },
+      "tvoc_high_threshold": {
+        "name": "Horní mez: Celkové těkavé organické látky"
+      },
+      "voc_low_threshold": {
+        "name": "Dolní mez: Index VOC"
+      },
+      "voc_high_threshold": {
+        "name": "Horní mez: Index VOC"
+      },
+      "nox_low_threshold": {
+        "name": "Dolní mez: Index NOx"
+      },
+      "nox_high_threshold": {
+        "name": "Horní mez: Index NOx"
+      },
+      "vape_high_threshold": {
+        "name": "Horní mez: Index vapování"
+      }
+    },
+    "select": {
+      "ring_led_metric": {
+        "name": "Měřená veličina LED prstence",
+        "state": {
+          "carbon_dioxide": "Oxid uhličitý",
+          "air_quality": "Index kvality vzduchu"
+        }
+      }
+    },
+    "sensor": {
+      "aqi": {
+        "name": "Index kvality vzduchu"
+      },
+      "co2": {
+        "name": "Oxid uhličitý"
+      },
+      "humidity": {
+        "name": "Vlhkost"
+      },
+      "temperature": {
+        "name": "Teplota"
+      },
+      "pm1": {
+        "name": "PM1"
+      },
+      "pm25": {
+        "name": "PM2.5"
+      },
+      "pm4": {
+        "name": "PM4"
+      },
+      "pm10": {
+        "name": "PM10"
+      },
+      "tvoc": {
+        "name": "Celkové těkavé organické látky"
+      },
+      "voc_index": {
+        "name": "Index VOC"
+      },
+      "nox_index": {
+        "name": "Index NOx"
+      },
+      "vape_index": {
+        "name": "Index vapování"
+      }
+    },
+    "switch": {
+      "status_light": {
+        "name": "Stavová kontrolka"
+      },
+      "ring_led": {
+        "name": "LED prstenec"
+      },
+      "activity_feedback": {
+        "name": "Indikace aktivity"
+      },
+      "night_mode": {
+        "name": "Noční režim"
+      },
+      "vape_detection": {
+        "name": "Detekce vapování"
+      },
+      "aqi_alerts": {
+        "name": "Upozornění: Index kvality vzduchu"
+      },
+      "co2_alerts": {
+        "name": "Upozornění: Oxid uhličitý"
+      },
+      "humidity_alerts": {
+        "name": "Upozornění: Vlhkost"
+      },
+      "pm1_alerts": {
+        "name": "Upozornění: PM1"
+      },
+      "pm25_alerts": {
+        "name": "Upozornění: PM2.5"
+      },
+      "pm4_alerts": {
+        "name": "Upozornění: PM4"
+      },
+      "pm10_alerts": {
+        "name": "Upozornění: PM10"
+      },
+      "temperature_alerts": {
+        "name": "Upozornění: Teplota"
+      },
+      "tvoc_alerts": {
+        "name": "Upozornění: Celkové těkavé organické látky"
+      },
+      "voc_alerts": {
+        "name": "Upozornění: Index VOC"
+      },
+      "nox_alerts": {
+        "name": "Upozornění: Index NOx"
+      },
+      "vape_alerts": {
+        "name": "Upozornění: Index vapování"
+      }
+    },
+    "time": {
+      "night_mode_start": {
+        "name": "Začátek nočního režimu"
+      },
+      "night_mode_end": {
+        "name": "Konec nočního režimu"
+      }
+    }
+  }
+}

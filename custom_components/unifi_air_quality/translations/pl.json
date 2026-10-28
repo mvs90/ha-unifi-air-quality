@@ -1,0 +1,273 @@
+{
+  "title": "UniFi Protect Air Quality",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Połącz z UniFi Protect",
+        "description": "Użyj osobnego lokalnego konta UniFi OS z uprawnieniami do odczytu w Protect.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "username": "Lokalna nazwa użytkownika",
+          "password": "Hasło",
+          "verify_ssl": "Weryfikuj certyfikat TLS"
+        },
+        "data_description": {
+          "host": "Tylko nazwa hosta lub adres IP, bez https://.",
+          "verify_ssl": "Włącz tylko wtedy, gdy Home Assistant ufa certyfikatowi konsoli."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Ponowne uwierzytelnienie w UniFi Protect",
+        "description": "Wprowadź aktualne hasło skonfigurowanego konta lokalnego.",
+        "data": {
+          "password": "Hasło"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nie udało się połączyć z UniFi Protect.",
+      "invalid_auth": "Nieprawidłowa nazwa użytkownika lub hasło.",
+      "invalid_response": "Protect zwrócił nieobsługiwaną odpowiedź.",
+      "unknown": "Nieoczekiwany błąd. Sprawdź dzienniki Home Assistant."
+    },
+    "abort": {
+      "already_configured": "Ta konsola Protect jest już skonfigurowana.",
+      "reauth_successful": "Ponowne uwierzytelnienie powiodło się.",
+      "unique_id_mismatch": "Dane logowania dotyczą innej konsoli Protect."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "aqi_alarm": {
+        "name": "Alarm: Indeks jakości powietrza"
+      },
+      "co2_alarm": {
+        "name": "Alarm: Dwutlenek węgla"
+      },
+      "humidity_alarm": {
+        "name": "Alarm: Wilgotność"
+      },
+      "temperature_alarm": {
+        "name": "Alarm: Temperatura"
+      },
+      "pm1_alarm": {
+        "name": "Alarm: PM1"
+      },
+      "pm25_alarm": {
+        "name": "Alarm: PM2.5"
+      },
+      "pm4_alarm": {
+        "name": "Alarm: PM4"
+      },
+      "pm10_alarm": {
+        "name": "Alarm: PM10"
+      },
+      "tvoc_alarm": {
+        "name": "Alarm: Całkowita ilość lotnych związków organicznych"
+      },
+      "voc_alarm": {
+        "name": "Alarm: Indeks LZO"
+      },
+      "nox_alarm": {
+        "name": "Alarm: Indeks NOx"
+      },
+      "vape_alarm": {
+        "name": "Alarm: Indeks wapowania"
+      }
+    },
+    "event": {
+      "air_quality_alarm": {
+        "name": "Zdarzenie alarmu jakości powietrza"
+      }
+    },
+    "number": {
+      "ring_led_brightness": {
+        "name": "Jasność pierścienia LED"
+      },
+      "night_mode_brightness": {
+        "name": "Jasność trybu nocnego"
+      },
+      "vape_sensitivity": {
+        "name": "Czułość wykrywania wapowania"
+      },
+      "aqi_low_threshold": {
+        "name": "Dolny próg: Indeks jakości powietrza"
+      },
+      "aqi_high_threshold": {
+        "name": "Górny próg: Indeks jakości powietrza"
+      },
+      "co2_low_threshold": {
+        "name": "Dolny próg: Dwutlenek węgla"
+      },
+      "co2_high_threshold": {
+        "name": "Górny próg: Dwutlenek węgla"
+      },
+      "humidity_low_threshold": {
+        "name": "Dolny próg: Wilgotność"
+      },
+      "humidity_high_threshold": {
+        "name": "Górny próg: Wilgotność"
+      },
+      "pm1_low_threshold": {
+        "name": "Dolny próg: PM1"
+      },
+      "pm1_high_threshold": {
+        "name": "Górny próg: PM1"
+      },
+      "pm25_low_threshold": {
+        "name": "Dolny próg: PM2.5"
+      },
+      "pm25_high_threshold": {
+        "name": "Górny próg: PM2.5"
+      },
+      "pm4_low_threshold": {
+        "name": "Dolny próg: PM4"
+      },
+      "pm4_high_threshold": {
+        "name": "Górny próg: PM4"
+      },
+      "pm10_low_threshold": {
+        "name": "Dolny próg: PM10"
+      },
+      "pm10_high_threshold": {
+        "name": "Górny próg: PM10"
+      },
+      "temperature_low_threshold": {
+        "name": "Dolny próg: Temperatura"
+      },
+      "temperature_high_threshold": {
+        "name": "Górny próg: Temperatura"
+      },
+      "tvoc_low_threshold": {
+        "name": "Dolny próg: Całkowita ilość lotnych związków organicznych"
+      },
+      "tvoc_high_threshold": {
+        "name": "Górny próg: Całkowita ilość lotnych związków organicznych"
+      },
+      "voc_low_threshold": {
+        "name": "Dolny próg: Indeks LZO"
+      },
+      "voc_high_threshold": {
+        "name": "Górny próg: Indeks LZO"
+      },
+      "nox_low_threshold": {
+        "name": "Dolny próg: Indeks NOx"
+      },
+      "nox_high_threshold": {
+        "name": "Górny próg: Indeks NOx"
+      },
+      "vape_high_threshold": {
+        "name": "Górny próg: Indeks wapowania"
+      }
+    },
+    "select": {
+      "ring_led_metric": {
+        "name": "Pomiar pierścienia LED",
+        "state": {
+          "carbon_dioxide": "Dwutlenek węgla",
+          "air_quality": "Indeks jakości powietrza"
+        }
+      }
+    },
+    "sensor": {
+      "aqi": {
+        "name": "Indeks jakości powietrza"
+      },
+      "co2": {
+        "name": "Dwutlenek węgla"
+      },
+      "humidity": {
+        "name": "Wilgotność"
+      },
+      "temperature": {
+        "name": "Temperatura"
+      },
+      "pm1": {
+        "name": "PM1"
+      },
+      "pm25": {
+        "name": "PM2.5"
+      },
+      "pm4": {
+        "name": "PM4"
+      },
+      "pm10": {
+        "name": "PM10"
+      },
+      "tvoc": {
+        "name": "Całkowita ilość lotnych związków organicznych"
+      },
+      "voc_index": {
+        "name": "Indeks LZO"
+      },
+      "nox_index": {
+        "name": "Indeks NOx"
+      },
+      "vape_index": {
+        "name": "Indeks wapowania"
+      }
+    },
+    "switch": {
+      "status_light": {
+        "name": "Kontrolka stanu"
+      },
+      "ring_led": {
+        "name": "Pierścień LED"
+      },
+      "activity_feedback": {
+        "name": "Sygnalizacja aktywności"
+      },
+      "night_mode": {
+        "name": "Tryb nocny"
+      },
+      "vape_detection": {
+        "name": "Wykrywanie wapowania"
+      },
+      "aqi_alerts": {
+        "name": "Powiadomienia: Indeks jakości powietrza"
+      },
+      "co2_alerts": {
+        "name": "Powiadomienia: Dwutlenek węgla"
+      },
+      "humidity_alerts": {
+        "name": "Powiadomienia: Wilgotność"
+      },
+      "pm1_alerts": {
+        "name": "Powiadomienia: PM1"
+      },
+      "pm25_alerts": {
+        "name": "Powiadomienia: PM2.5"
+      },
+      "pm4_alerts": {
+        "name": "Powiadomienia: PM4"
+      },
+      "pm10_alerts": {
+        "name": "Powiadomienia: PM10"
+      },
+      "temperature_alerts": {
+        "name": "Powiadomienia: Temperatura"
+      },
+      "tvoc_alerts": {
+        "name": "Powiadomienia: Całkowita ilość lotnych związków organicznych"
+      },
+      "voc_alerts": {
+        "name": "Powiadomienia: Indeks LZO"
+      },
+      "nox_alerts": {
+        "name": "Powiadomienia: Indeks NOx"
+      },
+      "vape_alerts": {
+        "name": "Powiadomienia: Indeks wapowania"
+      }
+    },
+    "time": {
+      "night_mode_start": {
+        "name": "Początek trybu nocnego"
+      },
+      "night_mode_end": {
+        "name": "Koniec trybu nocnego"
+      }
+    }
+  }
+}

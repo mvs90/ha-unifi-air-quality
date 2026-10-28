@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.1
+
+- Ship the English translation catalog required by custom integrations. Fix
+  repeated device names and generic "Problem" alarm names on English and
+  fallback-language installations (issue #5).
+- Preserve existing entity IDs and user-assigned names when corrected names
+  are loaded after an update.
+- Add complete French, Spanish, Italian, Dutch, Polish, Portuguese (Portugal
+  and Brazil), Swedish, Danish, Czech, Russian, Ukrainian, Simplified Chinese,
+  and Japanese translations, including setup dialogs and selection options.
+- Disable the NOx measurement, alarm state, alarm switch, and both threshold
+  entities by default; they can be enabled manually. Preserve existing user
+  choices when upgrading.
+- Add fresh-install naming, fallback-language, rename/reload, and NOx opt-in
+  regression tests using Home Assistant's real entity registry.
+
 ## 0.5.0
 
 - Automatically renew expired Protect sessions for bootstrap refreshes,

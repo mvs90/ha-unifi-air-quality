@@ -11,7 +11,7 @@ MQTT, a cloud account, and an additional bridge are not required.
 
 ## Current milestone: measurements, controls, and alarm triggers
 
-Version `0.5.0` can:
+Version `0.5.1` can:
 
 - configure a local Protect console through the Home Assistant UI;
 - authenticate with a dedicated local Protect user;
@@ -58,6 +58,11 @@ Older firmware that omits this field reports an unknown NOx measurement.
 Protect may also include the field but return `null`, as observed on the test
 device. In that case the NOx sensor remains unknown until the device firmware
 provides a numeric reading; adding the entity cannot create a missing reading.
+
+The five NOx entities (measurement, alarm state, alarm switch, and both
+thresholds) are disabled by default in Home Assistant. Enable them manually
+from the device's entity list when your firmware provides usable readings.
+Existing enabled/disabled choices are preserved when upgrading.
 
 | Entity | Native unit |
 | --- | --- |
@@ -116,6 +121,16 @@ documented units nor supported ranges for them.
 
 For manual installation, copy `custom_components/unifi_air_quality` into the
 same directory under your Home Assistant configuration directory and restart.
+
+Setup dialogs, entity names, and selection options are translated into English,
+German, French, Spanish, Italian, Dutch, Polish, Portuguese (Portugal and Brazil),
+Swedish, Danish, Czech, Russian, Ukrainian, Simplified Chinese, and Japanese.
+Other languages fall back to English.
+
+If an older installation shows repeated device names or generic
+"Problem" alarms, update to `0.5.1` or newer and restart Home Assistant. The
+display names are corrected without recreating the integration. Existing
+entity IDs and names you assigned yourself are preserved.
 
 ## Protect account
 

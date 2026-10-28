@@ -1,0 +1,273 @@
+{
+  "title": "UniFi Protect Air Quality",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Anslut till UniFi Protect",
+        "description": "Använd ett separat lokalt UniFi OS-konto med läsbehörighet i Protect.",
+        "data": {
+          "host": "Värd",
+          "port": "Port",
+          "username": "Lokalt användarnamn",
+          "password": "Lösenord",
+          "verify_ssl": "Verifiera TLS-certifikat"
+        },
+        "data_description": {
+          "host": "Endast värdnamn eller IP-adress, utan https://.",
+          "verify_ssl": "Aktivera endast om Home Assistant litar på konsolens certifikat."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Autentisera på nytt med UniFi Protect",
+        "description": "Ange det aktuella lösenordet för det konfigurerade lokala kontot.",
+        "data": {
+          "password": "Lösenord"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Det gick inte att ansluta till UniFi Protect.",
+      "invalid_auth": "Användarnamnet eller lösenordet är ogiltigt.",
+      "invalid_response": "Protect returnerade ett svar som inte stöds.",
+      "unknown": "Oväntat fel. Kontrollera Home Assistants loggar."
+    },
+    "abort": {
+      "already_configured": "Den här Protect-konsolen är redan konfigurerad.",
+      "reauth_successful": "Den nya autentiseringen lyckades.",
+      "unique_id_mismatch": "Inloggningsuppgifterna tillhör en annan Protect-konsol."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "aqi_alarm": {
+        "name": "Larm: Luftkvalitetsindex"
+      },
+      "co2_alarm": {
+        "name": "Larm: Koldioxid"
+      },
+      "humidity_alarm": {
+        "name": "Larm: Luftfuktighet"
+      },
+      "temperature_alarm": {
+        "name": "Larm: Temperatur"
+      },
+      "pm1_alarm": {
+        "name": "Larm: PM1"
+      },
+      "pm25_alarm": {
+        "name": "Larm: PM2.5"
+      },
+      "pm4_alarm": {
+        "name": "Larm: PM4"
+      },
+      "pm10_alarm": {
+        "name": "Larm: PM10"
+      },
+      "tvoc_alarm": {
+        "name": "Larm: Totala flyktiga organiska föreningar"
+      },
+      "voc_alarm": {
+        "name": "Larm: VOC-index"
+      },
+      "nox_alarm": {
+        "name": "Larm: NOx-index"
+      },
+      "vape_alarm": {
+        "name": "Larm: Vejpningsindex"
+      }
+    },
+    "event": {
+      "air_quality_alarm": {
+        "name": "Larmhändelse för luftkvalitet"
+      }
+    },
+    "number": {
+      "ring_led_brightness": {
+        "name": "LED-ringens ljusstyrka"
+      },
+      "night_mode_brightness": {
+        "name": "Nattlägets ljusstyrka"
+      },
+      "vape_sensitivity": {
+        "name": "Känslighet för vejping"
+      },
+      "aqi_low_threshold": {
+        "name": "Nedre gränsvärde: Luftkvalitetsindex"
+      },
+      "aqi_high_threshold": {
+        "name": "Övre gränsvärde: Luftkvalitetsindex"
+      },
+      "co2_low_threshold": {
+        "name": "Nedre gränsvärde: Koldioxid"
+      },
+      "co2_high_threshold": {
+        "name": "Övre gränsvärde: Koldioxid"
+      },
+      "humidity_low_threshold": {
+        "name": "Nedre gränsvärde: Luftfuktighet"
+      },
+      "humidity_high_threshold": {
+        "name": "Övre gränsvärde: Luftfuktighet"
+      },
+      "pm1_low_threshold": {
+        "name": "Nedre gränsvärde: PM1"
+      },
+      "pm1_high_threshold": {
+        "name": "Övre gränsvärde: PM1"
+      },
+      "pm25_low_threshold": {
+        "name": "Nedre gränsvärde: PM2.5"
+      },
+      "pm25_high_threshold": {
+        "name": "Övre gränsvärde: PM2.5"
+      },
+      "pm4_low_threshold": {
+        "name": "Nedre gränsvärde: PM4"
+      },
+      "pm4_high_threshold": {
+        "name": "Övre gränsvärde: PM4"
+      },
+      "pm10_low_threshold": {
+        "name": "Nedre gränsvärde: PM10"
+      },
+      "pm10_high_threshold": {
+        "name": "Övre gränsvärde: PM10"
+      },
+      "temperature_low_threshold": {
+        "name": "Nedre gränsvärde: Temperatur"
+      },
+      "temperature_high_threshold": {
+        "name": "Övre gränsvärde: Temperatur"
+      },
+      "tvoc_low_threshold": {
+        "name": "Nedre gränsvärde: Totala flyktiga organiska föreningar"
+      },
+      "tvoc_high_threshold": {
+        "name": "Övre gränsvärde: Totala flyktiga organiska föreningar"
+      },
+      "voc_low_threshold": {
+        "name": "Nedre gränsvärde: VOC-index"
+      },
+      "voc_high_threshold": {
+        "name": "Övre gränsvärde: VOC-index"
+      },
+      "nox_low_threshold": {
+        "name": "Nedre gränsvärde: NOx-index"
+      },
+      "nox_high_threshold": {
+        "name": "Övre gränsvärde: NOx-index"
+      },
+      "vape_high_threshold": {
+        "name": "Övre gränsvärde: Vejpningsindex"
+      }
+    },
+    "select": {
+      "ring_led_metric": {
+        "name": "LED-ringens mätvärde",
+        "state": {
+          "carbon_dioxide": "Koldioxid",
+          "air_quality": "Luftkvalitetsindex"
+        }
+      }
+    },
+    "sensor": {
+      "aqi": {
+        "name": "Luftkvalitetsindex"
+      },
+      "co2": {
+        "name": "Koldioxid"
+      },
+      "humidity": {
+        "name": "Luftfuktighet"
+      },
+      "temperature": {
+        "name": "Temperatur"
+      },
+      "pm1": {
+        "name": "PM1"
+      },
+      "pm25": {
+        "name": "PM2.5"
+      },
+      "pm4": {
+        "name": "PM4"
+      },
+      "pm10": {
+        "name": "PM10"
+      },
+      "tvoc": {
+        "name": "Totala flyktiga organiska föreningar"
+      },
+      "voc_index": {
+        "name": "VOC-index"
+      },
+      "nox_index": {
+        "name": "NOx-index"
+      },
+      "vape_index": {
+        "name": "Vejpningsindex"
+      }
+    },
+    "switch": {
+      "status_light": {
+        "name": "Statuslampa"
+      },
+      "ring_led": {
+        "name": "LED-ring"
+      },
+      "activity_feedback": {
+        "name": "Aktivitetsindikering"
+      },
+      "night_mode": {
+        "name": "Nattläge"
+      },
+      "vape_detection": {
+        "name": "Vejpningsdetektering"
+      },
+      "aqi_alerts": {
+        "name": "Aviseringar: Luftkvalitetsindex"
+      },
+      "co2_alerts": {
+        "name": "Aviseringar: Koldioxid"
+      },
+      "humidity_alerts": {
+        "name": "Aviseringar: Luftfuktighet"
+      },
+      "pm1_alerts": {
+        "name": "Aviseringar: PM1"
+      },
+      "pm25_alerts": {
+        "name": "Aviseringar: PM2.5"
+      },
+      "pm4_alerts": {
+        "name": "Aviseringar: PM4"
+      },
+      "pm10_alerts": {
+        "name": "Aviseringar: PM10"
+      },
+      "temperature_alerts": {
+        "name": "Aviseringar: Temperatur"
+      },
+      "tvoc_alerts": {
+        "name": "Aviseringar: Totala flyktiga organiska föreningar"
+      },
+      "voc_alerts": {
+        "name": "Aviseringar: VOC-index"
+      },
+      "nox_alerts": {
+        "name": "Aviseringar: NOx-index"
+      },
+      "vape_alerts": {
+        "name": "Aviseringar: Vejpningsindex"
+      }
+    },
+    "time": {
+      "night_mode_start": {
+        "name": "Nattlägets start"
+      },
+      "night_mode_end": {
+        "name": "Nattlägets slut"
+      }
+    }
+  }
+}

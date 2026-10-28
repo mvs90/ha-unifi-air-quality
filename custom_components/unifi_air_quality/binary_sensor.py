@@ -33,6 +33,7 @@ ALARM_DESCRIPTIONS: tuple[AlarmBinarySensorDescription, ...] = tuple(
         translation_key=f"{key}_alarm",
         payload_key=payload_key,
         device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_registry_enabled_default=payload_key != "nox",
     )
     for key, payload_key in (
         ("aqi", "aqi"),

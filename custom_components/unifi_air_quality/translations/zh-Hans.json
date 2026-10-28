@@ -1,0 +1,273 @@
+{
+  "title": "UniFi Protect Air Quality",
+  "config": {
+    "step": {
+      "user": {
+        "title": "连接到 UniFi Protect",
+        "description": "请使用具有 Protect 读取权限的专用 UniFi OS 本地账户。",
+        "data": {
+          "host": "主机",
+          "port": "端口",
+          "username": "本地用户名",
+          "password": "密码",
+          "verify_ssl": "验证 TLS 证书"
+        },
+        "data_description": {
+          "host": "仅填写主机名或 IP 地址，不要包含 https://。",
+          "verify_ssl": "仅在 Home Assistant 信任控制台证书时启用。"
+        }
+      },
+      "reauth_confirm": {
+        "title": "重新验证 UniFi Protect",
+        "description": "请输入已配置本地账户的当前密码。",
+        "data": {
+          "password": "密码"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接到 UniFi Protect。",
+      "invalid_auth": "用户名或密码无效。",
+      "invalid_response": "Protect 返回了不支持的响应。",
+      "unknown": "发生意外错误。请检查 Home Assistant 日志。"
+    },
+    "abort": {
+      "already_configured": "此 Protect 控制台已配置。",
+      "reauth_successful": "重新验证成功。",
+      "unique_id_mismatch": "这些凭据属于另一个 Protect 控制台。"
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "aqi_alarm": {
+        "name": "空气质量指数警报"
+      },
+      "co2_alarm": {
+        "name": "二氧化碳警报"
+      },
+      "humidity_alarm": {
+        "name": "湿度警报"
+      },
+      "temperature_alarm": {
+        "name": "温度警报"
+      },
+      "pm1_alarm": {
+        "name": "PM1警报"
+      },
+      "pm25_alarm": {
+        "name": "PM2.5警报"
+      },
+      "pm4_alarm": {
+        "name": "PM4警报"
+      },
+      "pm10_alarm": {
+        "name": "PM10警报"
+      },
+      "tvoc_alarm": {
+        "name": "总挥发性有机化合物警报"
+      },
+      "voc_alarm": {
+        "name": "VOC 指数警报"
+      },
+      "nox_alarm": {
+        "name": "NOx 指数警报"
+      },
+      "vape_alarm": {
+        "name": "电子烟指数警报"
+      }
+    },
+    "event": {
+      "air_quality_alarm": {
+        "name": "空气质量警报事件"
+      }
+    },
+    "number": {
+      "ring_led_brightness": {
+        "name": "LED 灯环亮度"
+      },
+      "night_mode_brightness": {
+        "name": "夜间模式亮度"
+      },
+      "vape_sensitivity": {
+        "name": "电子烟检测灵敏度"
+      },
+      "aqi_low_threshold": {
+        "name": "空气质量指数下限阈值"
+      },
+      "aqi_high_threshold": {
+        "name": "空气质量指数上限阈值"
+      },
+      "co2_low_threshold": {
+        "name": "二氧化碳下限阈值"
+      },
+      "co2_high_threshold": {
+        "name": "二氧化碳上限阈值"
+      },
+      "humidity_low_threshold": {
+        "name": "湿度下限阈值"
+      },
+      "humidity_high_threshold": {
+        "name": "湿度上限阈值"
+      },
+      "pm1_low_threshold": {
+        "name": "PM1下限阈值"
+      },
+      "pm1_high_threshold": {
+        "name": "PM1上限阈值"
+      },
+      "pm25_low_threshold": {
+        "name": "PM2.5下限阈值"
+      },
+      "pm25_high_threshold": {
+        "name": "PM2.5上限阈值"
+      },
+      "pm4_low_threshold": {
+        "name": "PM4下限阈值"
+      },
+      "pm4_high_threshold": {
+        "name": "PM4上限阈值"
+      },
+      "pm10_low_threshold": {
+        "name": "PM10下限阈值"
+      },
+      "pm10_high_threshold": {
+        "name": "PM10上限阈值"
+      },
+      "temperature_low_threshold": {
+        "name": "温度下限阈值"
+      },
+      "temperature_high_threshold": {
+        "name": "温度上限阈值"
+      },
+      "tvoc_low_threshold": {
+        "name": "总挥发性有机化合物下限阈值"
+      },
+      "tvoc_high_threshold": {
+        "name": "总挥发性有机化合物上限阈值"
+      },
+      "voc_low_threshold": {
+        "name": "VOC 指数下限阈值"
+      },
+      "voc_high_threshold": {
+        "name": "VOC 指数上限阈值"
+      },
+      "nox_low_threshold": {
+        "name": "NOx 指数下限阈值"
+      },
+      "nox_high_threshold": {
+        "name": "NOx 指数上限阈值"
+      },
+      "vape_high_threshold": {
+        "name": "电子烟指数上限阈值"
+      }
+    },
+    "select": {
+      "ring_led_metric": {
+        "name": "LED 灯环显示指标",
+        "state": {
+          "carbon_dioxide": "二氧化碳",
+          "air_quality": "空气质量指数"
+        }
+      }
+    },
+    "sensor": {
+      "aqi": {
+        "name": "空气质量指数"
+      },
+      "co2": {
+        "name": "二氧化碳"
+      },
+      "humidity": {
+        "name": "湿度"
+      },
+      "temperature": {
+        "name": "温度"
+      },
+      "pm1": {
+        "name": "PM1"
+      },
+      "pm25": {
+        "name": "PM2.5"
+      },
+      "pm4": {
+        "name": "PM4"
+      },
+      "pm10": {
+        "name": "PM10"
+      },
+      "tvoc": {
+        "name": "总挥发性有机化合物"
+      },
+      "voc_index": {
+        "name": "VOC 指数"
+      },
+      "nox_index": {
+        "name": "NOx 指数"
+      },
+      "vape_index": {
+        "name": "电子烟指数"
+      }
+    },
+    "switch": {
+      "status_light": {
+        "name": "状态指示灯"
+      },
+      "ring_led": {
+        "name": "LED 灯环"
+      },
+      "activity_feedback": {
+        "name": "活动反馈"
+      },
+      "night_mode": {
+        "name": "夜间模式"
+      },
+      "vape_detection": {
+        "name": "电子烟检测"
+      },
+      "aqi_alerts": {
+        "name": "空气质量指数提醒"
+      },
+      "co2_alerts": {
+        "name": "二氧化碳提醒"
+      },
+      "humidity_alerts": {
+        "name": "湿度提醒"
+      },
+      "pm1_alerts": {
+        "name": "PM1提醒"
+      },
+      "pm25_alerts": {
+        "name": "PM2.5提醒"
+      },
+      "pm4_alerts": {
+        "name": "PM4提醒"
+      },
+      "pm10_alerts": {
+        "name": "PM10提醒"
+      },
+      "temperature_alerts": {
+        "name": "温度提醒"
+      },
+      "tvoc_alerts": {
+        "name": "总挥发性有机化合物提醒"
+      },
+      "voc_alerts": {
+        "name": "VOC 指数提醒"
+      },
+      "nox_alerts": {
+        "name": "NOx 指数提醒"
+      },
+      "vape_alerts": {
+        "name": "电子烟指数提醒"
+      }
+    },
+    "time": {
+      "night_mode_start": {
+        "name": "夜间模式开始时间"
+      },
+      "night_mode_end": {
+        "name": "夜间模式结束时间"
+      }
+    }
+  }
+}

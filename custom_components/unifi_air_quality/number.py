@@ -113,6 +113,7 @@ NUMBER_DESCRIPTIONS: tuple[AirQualityNumberDescription, ...] = (
         AirQualityNumberDescription(
             key=f"{metric.key}_{bound}_threshold",
             translation_key=f"{metric.key}_{bound}_threshold",
+            entity_registry_enabled_default=metric.key != "nox",
             icon="mdi:tune-variant",
             entity_category=EntityCategory.CONFIG,
             native_min_value=metric.minimum,

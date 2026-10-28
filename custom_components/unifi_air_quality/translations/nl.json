@@ -1,0 +1,273 @@
+{
+  "title": "UniFi Protect Air Quality",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Verbinden met UniFi Protect",
+        "description": "Gebruik een apart lokaal UniFi OS-account met leestoegang tot Protect.",
+        "data": {
+          "host": "Host",
+          "port": "Poort",
+          "username": "Lokale gebruikersnaam",
+          "password": "Wachtwoord",
+          "verify_ssl": "TLS-certificaat verifiëren"
+        },
+        "data_description": {
+          "host": "Alleen de hostnaam of het IP-adres, zonder https://.",
+          "verify_ssl": "Schakel dit alleen in als Home Assistant het certificaat van de console vertrouwt."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Opnieuw aanmelden bij UniFi Protect",
+        "description": "Voer het huidige wachtwoord van het ingestelde lokale account in.",
+        "data": {
+          "password": "Wachtwoord"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan geen verbinding maken met UniFi Protect.",
+      "invalid_auth": "De gebruikersnaam of het wachtwoord is ongeldig.",
+      "invalid_response": "Protect heeft een niet-ondersteund antwoord teruggestuurd.",
+      "unknown": "Onverwachte fout. Controleer de logboeken van Home Assistant."
+    },
+    "abort": {
+      "already_configured": "Deze Protect-console is al ingesteld.",
+      "reauth_successful": "Het opnieuw aanmelden is gelukt.",
+      "unique_id_mismatch": "De aanmeldgegevens horen bij een andere Protect-console."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "aqi_alarm": {
+        "name": "Alarm: Luchtkwaliteitsindex"
+      },
+      "co2_alarm": {
+        "name": "Alarm: Koolstofdioxide"
+      },
+      "humidity_alarm": {
+        "name": "Alarm: Luchtvochtigheid"
+      },
+      "temperature_alarm": {
+        "name": "Alarm: Temperatuur"
+      },
+      "pm1_alarm": {
+        "name": "Alarm: PM1"
+      },
+      "pm25_alarm": {
+        "name": "Alarm: PM2.5"
+      },
+      "pm4_alarm": {
+        "name": "Alarm: PM4"
+      },
+      "pm10_alarm": {
+        "name": "Alarm: PM10"
+      },
+      "tvoc_alarm": {
+        "name": "Alarm: Totale vluchtige organische stoffen"
+      },
+      "voc_alarm": {
+        "name": "Alarm: VOC-index"
+      },
+      "nox_alarm": {
+        "name": "Alarm: NOx-index"
+      },
+      "vape_alarm": {
+        "name": "Alarm: Vape-index"
+      }
+    },
+    "event": {
+      "air_quality_alarm": {
+        "name": "Alarmgebeurtenis voor luchtkwaliteit"
+      }
+    },
+    "number": {
+      "ring_led_brightness": {
+        "name": "Helderheid van de ledring"
+      },
+      "night_mode_brightness": {
+        "name": "Helderheid van de nachtmodus"
+      },
+      "vape_sensitivity": {
+        "name": "Vapegevoeligheid"
+      },
+      "aqi_low_threshold": {
+        "name": "Ondergrens: Luchtkwaliteitsindex"
+      },
+      "aqi_high_threshold": {
+        "name": "Bovengrens: Luchtkwaliteitsindex"
+      },
+      "co2_low_threshold": {
+        "name": "Ondergrens: Koolstofdioxide"
+      },
+      "co2_high_threshold": {
+        "name": "Bovengrens: Koolstofdioxide"
+      },
+      "humidity_low_threshold": {
+        "name": "Ondergrens: Luchtvochtigheid"
+      },
+      "humidity_high_threshold": {
+        "name": "Bovengrens: Luchtvochtigheid"
+      },
+      "pm1_low_threshold": {
+        "name": "Ondergrens: PM1"
+      },
+      "pm1_high_threshold": {
+        "name": "Bovengrens: PM1"
+      },
+      "pm25_low_threshold": {
+        "name": "Ondergrens: PM2.5"
+      },
+      "pm25_high_threshold": {
+        "name": "Bovengrens: PM2.5"
+      },
+      "pm4_low_threshold": {
+        "name": "Ondergrens: PM4"
+      },
+      "pm4_high_threshold": {
+        "name": "Bovengrens: PM4"
+      },
+      "pm10_low_threshold": {
+        "name": "Ondergrens: PM10"
+      },
+      "pm10_high_threshold": {
+        "name": "Bovengrens: PM10"
+      },
+      "temperature_low_threshold": {
+        "name": "Ondergrens: Temperatuur"
+      },
+      "temperature_high_threshold": {
+        "name": "Bovengrens: Temperatuur"
+      },
+      "tvoc_low_threshold": {
+        "name": "Ondergrens: Totale vluchtige organische stoffen"
+      },
+      "tvoc_high_threshold": {
+        "name": "Bovengrens: Totale vluchtige organische stoffen"
+      },
+      "voc_low_threshold": {
+        "name": "Ondergrens: VOC-index"
+      },
+      "voc_high_threshold": {
+        "name": "Bovengrens: VOC-index"
+      },
+      "nox_low_threshold": {
+        "name": "Ondergrens: NOx-index"
+      },
+      "nox_high_threshold": {
+        "name": "Bovengrens: NOx-index"
+      },
+      "vape_high_threshold": {
+        "name": "Bovengrens: Vape-index"
+      }
+    },
+    "select": {
+      "ring_led_metric": {
+        "name": "Meetwaarde van de ledring",
+        "state": {
+          "carbon_dioxide": "Koolstofdioxide",
+          "air_quality": "Luchtkwaliteitsindex"
+        }
+      }
+    },
+    "sensor": {
+      "aqi": {
+        "name": "Luchtkwaliteitsindex"
+      },
+      "co2": {
+        "name": "Koolstofdioxide"
+      },
+      "humidity": {
+        "name": "Luchtvochtigheid"
+      },
+      "temperature": {
+        "name": "Temperatuur"
+      },
+      "pm1": {
+        "name": "PM1"
+      },
+      "pm25": {
+        "name": "PM2.5"
+      },
+      "pm4": {
+        "name": "PM4"
+      },
+      "pm10": {
+        "name": "PM10"
+      },
+      "tvoc": {
+        "name": "Totale vluchtige organische stoffen"
+      },
+      "voc_index": {
+        "name": "VOC-index"
+      },
+      "nox_index": {
+        "name": "NOx-index"
+      },
+      "vape_index": {
+        "name": "Vape-index"
+      }
+    },
+    "switch": {
+      "status_light": {
+        "name": "Statuslampje"
+      },
+      "ring_led": {
+        "name": "Ledring"
+      },
+      "activity_feedback": {
+        "name": "Activiteitsindicatie"
+      },
+      "night_mode": {
+        "name": "Nachtmodus"
+      },
+      "vape_detection": {
+        "name": "Vapedetectie"
+      },
+      "aqi_alerts": {
+        "name": "Waarschuwingen: Luchtkwaliteitsindex"
+      },
+      "co2_alerts": {
+        "name": "Waarschuwingen: Koolstofdioxide"
+      },
+      "humidity_alerts": {
+        "name": "Waarschuwingen: Luchtvochtigheid"
+      },
+      "pm1_alerts": {
+        "name": "Waarschuwingen: PM1"
+      },
+      "pm25_alerts": {
+        "name": "Waarschuwingen: PM2.5"
+      },
+      "pm4_alerts": {
+        "name": "Waarschuwingen: PM4"
+      },
+      "pm10_alerts": {
+        "name": "Waarschuwingen: PM10"
+      },
+      "temperature_alerts": {
+        "name": "Waarschuwingen: Temperatuur"
+      },
+      "tvoc_alerts": {
+        "name": "Waarschuwingen: Totale vluchtige organische stoffen"
+      },
+      "voc_alerts": {
+        "name": "Waarschuwingen: VOC-index"
+      },
+      "nox_alerts": {
+        "name": "Waarschuwingen: NOx-index"
+      },
+      "vape_alerts": {
+        "name": "Waarschuwingen: Vape-index"
+      }
+    },
+    "time": {
+      "night_mode_start": {
+        "name": "Begin van de nachtmodus"
+      },
+      "night_mode_end": {
+        "name": "Einde van de nachtmodus"
+      }
+    }
+  }
+}

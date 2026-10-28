@@ -1,0 +1,273 @@
+{
+  "title": "UniFi Protect Air Quality",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Opret forbindelse til UniFi Protect",
+        "description": "Brug en separat lokal UniFi OS-konto med læseadgang til Protect.",
+        "data": {
+          "host": "Vært",
+          "port": "Port",
+          "username": "Lokalt brugernavn",
+          "password": "Adgangskode",
+          "verify_ssl": "Bekræft TLS-certifikat"
+        },
+        "data_description": {
+          "host": "Kun værtsnavn eller IP-adresse, uden https://.",
+          "verify_ssl": "Aktivér kun, hvis Home Assistant har tillid til konsollens certifikat."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Godkend igen med UniFi Protect",
+        "description": "Indtast den aktuelle adgangskode til den konfigurerede lokale konto.",
+        "data": {
+          "password": "Adgangskode"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kunne ikke oprette forbindelse til UniFi Protect.",
+      "invalid_auth": "Brugernavnet eller adgangskoden er ugyldig.",
+      "invalid_response": "Protect returnerede et svar, der ikke understøttes.",
+      "unknown": "Uventet fejl. Kontrollér logfilerne i Home Assistant."
+    },
+    "abort": {
+      "already_configured": "Denne Protect-konsol er allerede konfigureret.",
+      "reauth_successful": "Godkendelsen blev fornyet.",
+      "unique_id_mismatch": "Loginoplysningerne tilhører en anden Protect-konsol."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "aqi_alarm": {
+        "name": "Alarm: Luftkvalitetsindeks"
+      },
+      "co2_alarm": {
+        "name": "Alarm: Kuldioxid"
+      },
+      "humidity_alarm": {
+        "name": "Alarm: Luftfugtighed"
+      },
+      "temperature_alarm": {
+        "name": "Alarm: Temperatur"
+      },
+      "pm1_alarm": {
+        "name": "Alarm: PM1"
+      },
+      "pm25_alarm": {
+        "name": "Alarm: PM2.5"
+      },
+      "pm4_alarm": {
+        "name": "Alarm: PM4"
+      },
+      "pm10_alarm": {
+        "name": "Alarm: PM10"
+      },
+      "tvoc_alarm": {
+        "name": "Alarm: Samlede flygtige organiske forbindelser"
+      },
+      "voc_alarm": {
+        "name": "Alarm: VOC-indeks"
+      },
+      "nox_alarm": {
+        "name": "Alarm: NOx-indeks"
+      },
+      "vape_alarm": {
+        "name": "Alarm: Vapingindeks"
+      }
+    },
+    "event": {
+      "air_quality_alarm": {
+        "name": "Alarmhændelse for luftkvalitet"
+      }
+    },
+    "number": {
+      "ring_led_brightness": {
+        "name": "LED-ringens lysstyrke"
+      },
+      "night_mode_brightness": {
+        "name": "Nattilstandens lysstyrke"
+      },
+      "vape_sensitivity": {
+        "name": "Følsomhed for vaping"
+      },
+      "aqi_low_threshold": {
+        "name": "Nedre grænseværdi: Luftkvalitetsindeks"
+      },
+      "aqi_high_threshold": {
+        "name": "Øvre grænseværdi: Luftkvalitetsindeks"
+      },
+      "co2_low_threshold": {
+        "name": "Nedre grænseværdi: Kuldioxid"
+      },
+      "co2_high_threshold": {
+        "name": "Øvre grænseværdi: Kuldioxid"
+      },
+      "humidity_low_threshold": {
+        "name": "Nedre grænseværdi: Luftfugtighed"
+      },
+      "humidity_high_threshold": {
+        "name": "Øvre grænseværdi: Luftfugtighed"
+      },
+      "pm1_low_threshold": {
+        "name": "Nedre grænseværdi: PM1"
+      },
+      "pm1_high_threshold": {
+        "name": "Øvre grænseværdi: PM1"
+      },
+      "pm25_low_threshold": {
+        "name": "Nedre grænseværdi: PM2.5"
+      },
+      "pm25_high_threshold": {
+        "name": "Øvre grænseværdi: PM2.5"
+      },
+      "pm4_low_threshold": {
+        "name": "Nedre grænseværdi: PM4"
+      },
+      "pm4_high_threshold": {
+        "name": "Øvre grænseværdi: PM4"
+      },
+      "pm10_low_threshold": {
+        "name": "Nedre grænseværdi: PM10"
+      },
+      "pm10_high_threshold": {
+        "name": "Øvre grænseværdi: PM10"
+      },
+      "temperature_low_threshold": {
+        "name": "Nedre grænseværdi: Temperatur"
+      },
+      "temperature_high_threshold": {
+        "name": "Øvre grænseværdi: Temperatur"
+      },
+      "tvoc_low_threshold": {
+        "name": "Nedre grænseværdi: Samlede flygtige organiske forbindelser"
+      },
+      "tvoc_high_threshold": {
+        "name": "Øvre grænseværdi: Samlede flygtige organiske forbindelser"
+      },
+      "voc_low_threshold": {
+        "name": "Nedre grænseværdi: VOC-indeks"
+      },
+      "voc_high_threshold": {
+        "name": "Øvre grænseværdi: VOC-indeks"
+      },
+      "nox_low_threshold": {
+        "name": "Nedre grænseværdi: NOx-indeks"
+      },
+      "nox_high_threshold": {
+        "name": "Øvre grænseværdi: NOx-indeks"
+      },
+      "vape_high_threshold": {
+        "name": "Øvre grænseværdi: Vapingindeks"
+      }
+    },
+    "select": {
+      "ring_led_metric": {
+        "name": "LED-ringens måleværdi",
+        "state": {
+          "carbon_dioxide": "Kuldioxid",
+          "air_quality": "Luftkvalitetsindeks"
+        }
+      }
+    },
+    "sensor": {
+      "aqi": {
+        "name": "Luftkvalitetsindeks"
+      },
+      "co2": {
+        "name": "Kuldioxid"
+      },
+      "humidity": {
+        "name": "Luftfugtighed"
+      },
+      "temperature": {
+        "name": "Temperatur"
+      },
+      "pm1": {
+        "name": "PM1"
+      },
+      "pm25": {
+        "name": "PM2.5"
+      },
+      "pm4": {
+        "name": "PM4"
+      },
+      "pm10": {
+        "name": "PM10"
+      },
+      "tvoc": {
+        "name": "Samlede flygtige organiske forbindelser"
+      },
+      "voc_index": {
+        "name": "VOC-indeks"
+      },
+      "nox_index": {
+        "name": "NOx-indeks"
+      },
+      "vape_index": {
+        "name": "Vapingindeks"
+      }
+    },
+    "switch": {
+      "status_light": {
+        "name": "Statuslys"
+      },
+      "ring_led": {
+        "name": "LED-ring"
+      },
+      "activity_feedback": {
+        "name": "Aktivitetsindikering"
+      },
+      "night_mode": {
+        "name": "Nattilstand"
+      },
+      "vape_detection": {
+        "name": "Registrering af vaping"
+      },
+      "aqi_alerts": {
+        "name": "Advarsler: Luftkvalitetsindeks"
+      },
+      "co2_alerts": {
+        "name": "Advarsler: Kuldioxid"
+      },
+      "humidity_alerts": {
+        "name": "Advarsler: Luftfugtighed"
+      },
+      "pm1_alerts": {
+        "name": "Advarsler: PM1"
+      },
+      "pm25_alerts": {
+        "name": "Advarsler: PM2.5"
+      },
+      "pm4_alerts": {
+        "name": "Advarsler: PM4"
+      },
+      "pm10_alerts": {
+        "name": "Advarsler: PM10"
+      },
+      "temperature_alerts": {
+        "name": "Advarsler: Temperatur"
+      },
+      "tvoc_alerts": {
+        "name": "Advarsler: Samlede flygtige organiske forbindelser"
+      },
+      "voc_alerts": {
+        "name": "Advarsler: VOC-indeks"
+      },
+      "nox_alerts": {
+        "name": "Advarsler: NOx-indeks"
+      },
+      "vape_alerts": {
+        "name": "Advarsler: Vapingindeks"
+      }
+    },
+    "time": {
+      "night_mode_start": {
+        "name": "Start på nattilstand"
+      },
+      "night_mode_end": {
+        "name": "Slut på nattilstand"
+      }
+    }
+  }
+}

@@ -1,0 +1,273 @@
+{
+  "title": "UniFi Protect Air Quality",
+  "config": {
+    "step": {
+      "user": {
+        "title": "UniFi Protect に接続",
+        "description": "Protect の読み取り権限を持つ専用の UniFi OS ローカルアカウントを使用してください。",
+        "data": {
+          "host": "ホスト",
+          "port": "ポート",
+          "username": "ローカルユーザー名",
+          "password": "パスワード",
+          "verify_ssl": "TLS 証明書を検証"
+        },
+        "data_description": {
+          "host": "https:// を含めず、ホスト名または IP アドレスのみを入力してください。",
+          "verify_ssl": "Home Assistant がコンソールの証明書を信頼している場合のみ有効にしてください。"
+        }
+      },
+      "reauth_confirm": {
+        "title": "UniFi Protect で再認証",
+        "description": "設定済みのローカルアカウントの現在のパスワードを入力してください。",
+        "data": {
+          "password": "パスワード"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "UniFi Protect に接続できませんでした。",
+      "invalid_auth": "ユーザー名またはパスワードが無効です。",
+      "invalid_response": "Protect が未対応の応答を返しました。",
+      "unknown": "予期しないエラーが発生しました。Home Assistant のログを確認してください。"
+    },
+    "abort": {
+      "already_configured": "この Protect コンソールはすでに設定されています。",
+      "reauth_successful": "再認証に成功しました。",
+      "unique_id_mismatch": "この認証情報は別の Protect コンソールのものです。"
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "aqi_alarm": {
+        "name": "空気質指数アラーム"
+      },
+      "co2_alarm": {
+        "name": "二酸化炭素アラーム"
+      },
+      "humidity_alarm": {
+        "name": "湿度アラーム"
+      },
+      "temperature_alarm": {
+        "name": "温度アラーム"
+      },
+      "pm1_alarm": {
+        "name": "PM1アラーム"
+      },
+      "pm25_alarm": {
+        "name": "PM2.5アラーム"
+      },
+      "pm4_alarm": {
+        "name": "PM4アラーム"
+      },
+      "pm10_alarm": {
+        "name": "PM10アラーム"
+      },
+      "tvoc_alarm": {
+        "name": "総揮発性有機化合物アラーム"
+      },
+      "voc_alarm": {
+        "name": "VOC 指数アラーム"
+      },
+      "nox_alarm": {
+        "name": "NOx 指数アラーム"
+      },
+      "vape_alarm": {
+        "name": "電子たばこ指数アラーム"
+      }
+    },
+    "event": {
+      "air_quality_alarm": {
+        "name": "空気質アラームイベント"
+      }
+    },
+    "number": {
+      "ring_led_brightness": {
+        "name": "LED リングの明るさ"
+      },
+      "night_mode_brightness": {
+        "name": "夜間モードの明るさ"
+      },
+      "vape_sensitivity": {
+        "name": "電子たばこの検知感度"
+      },
+      "aqi_low_threshold": {
+        "name": "空気質指数の下限しきい値"
+      },
+      "aqi_high_threshold": {
+        "name": "空気質指数の上限しきい値"
+      },
+      "co2_low_threshold": {
+        "name": "二酸化炭素の下限しきい値"
+      },
+      "co2_high_threshold": {
+        "name": "二酸化炭素の上限しきい値"
+      },
+      "humidity_low_threshold": {
+        "name": "湿度の下限しきい値"
+      },
+      "humidity_high_threshold": {
+        "name": "湿度の上限しきい値"
+      },
+      "pm1_low_threshold": {
+        "name": "PM1の下限しきい値"
+      },
+      "pm1_high_threshold": {
+        "name": "PM1の上限しきい値"
+      },
+      "pm25_low_threshold": {
+        "name": "PM2.5の下限しきい値"
+      },
+      "pm25_high_threshold": {
+        "name": "PM2.5の上限しきい値"
+      },
+      "pm4_low_threshold": {
+        "name": "PM4の下限しきい値"
+      },
+      "pm4_high_threshold": {
+        "name": "PM4の上限しきい値"
+      },
+      "pm10_low_threshold": {
+        "name": "PM10の下限しきい値"
+      },
+      "pm10_high_threshold": {
+        "name": "PM10の上限しきい値"
+      },
+      "temperature_low_threshold": {
+        "name": "温度の下限しきい値"
+      },
+      "temperature_high_threshold": {
+        "name": "温度の上限しきい値"
+      },
+      "tvoc_low_threshold": {
+        "name": "総揮発性有機化合物の下限しきい値"
+      },
+      "tvoc_high_threshold": {
+        "name": "総揮発性有機化合物の上限しきい値"
+      },
+      "voc_low_threshold": {
+        "name": "VOC 指数の下限しきい値"
+      },
+      "voc_high_threshold": {
+        "name": "VOC 指数の上限しきい値"
+      },
+      "nox_low_threshold": {
+        "name": "NOx 指数の下限しきい値"
+      },
+      "nox_high_threshold": {
+        "name": "NOx 指数の上限しきい値"
+      },
+      "vape_high_threshold": {
+        "name": "電子たばこ指数の上限しきい値"
+      }
+    },
+    "select": {
+      "ring_led_metric": {
+        "name": "LED リングの表示指標",
+        "state": {
+          "carbon_dioxide": "二酸化炭素",
+          "air_quality": "空気質指数"
+        }
+      }
+    },
+    "sensor": {
+      "aqi": {
+        "name": "空気質指数"
+      },
+      "co2": {
+        "name": "二酸化炭素"
+      },
+      "humidity": {
+        "name": "湿度"
+      },
+      "temperature": {
+        "name": "温度"
+      },
+      "pm1": {
+        "name": "PM1"
+      },
+      "pm25": {
+        "name": "PM2.5"
+      },
+      "pm4": {
+        "name": "PM4"
+      },
+      "pm10": {
+        "name": "PM10"
+      },
+      "tvoc": {
+        "name": "総揮発性有機化合物"
+      },
+      "voc_index": {
+        "name": "VOC 指数"
+      },
+      "nox_index": {
+        "name": "NOx 指数"
+      },
+      "vape_index": {
+        "name": "電子たばこ指数"
+      }
+    },
+    "switch": {
+      "status_light": {
+        "name": "ステータスランプ"
+      },
+      "ring_led": {
+        "name": "LED リング"
+      },
+      "activity_feedback": {
+        "name": "動作フィードバック"
+      },
+      "night_mode": {
+        "name": "夜間モード"
+      },
+      "vape_detection": {
+        "name": "電子たばこ検知"
+      },
+      "aqi_alerts": {
+        "name": "空気質指数の通知"
+      },
+      "co2_alerts": {
+        "name": "二酸化炭素の通知"
+      },
+      "humidity_alerts": {
+        "name": "湿度の通知"
+      },
+      "pm1_alerts": {
+        "name": "PM1の通知"
+      },
+      "pm25_alerts": {
+        "name": "PM2.5の通知"
+      },
+      "pm4_alerts": {
+        "name": "PM4の通知"
+      },
+      "pm10_alerts": {
+        "name": "PM10の通知"
+      },
+      "temperature_alerts": {
+        "name": "温度の通知"
+      },
+      "tvoc_alerts": {
+        "name": "総揮発性有機化合物の通知"
+      },
+      "voc_alerts": {
+        "name": "VOC 指数の通知"
+      },
+      "nox_alerts": {
+        "name": "NOx 指数の通知"
+      },
+      "vape_alerts": {
+        "name": "電子たばこ指数の通知"
+      }
+    },
+    "time": {
+      "night_mode_start": {
+        "name": "夜間モードの開始時刻"
+      },
+      "night_mode_end": {
+        "name": "夜間モードの終了時刻"
+      }
+    }
+  }
+}

@@ -71,6 +71,7 @@ SWITCH_DESCRIPTIONS: tuple[AirQualitySwitchDescription, ...] = (
         AirQualitySwitchDescription(
             key=key,
             translation_key=key,
+            entity_registry_enabled_default=key != "nox_alerts",
             icon="mdi:alert-outline",
             entity_category=EntityCategory.CONFIG,
             path=("airQualitySettings", settings_key, "isEnabled"),

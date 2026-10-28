@@ -105,6 +105,21 @@ async def test_full_ha_setup_exposes_nox_entities_and_event_types(hass, load_fix
         },
     )
     entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    for domain, suffix in (
+        ("sensor", "nox_index"),
+        ("binary_sensor", "nox_alarm"),
+        ("number", "nox_low_threshold"),
+        ("number", "nox_high_threshold"),
+        ("switch", "nox_alerts"),
+    ):
+        registry.async_get_or_create(
+            domain,
+            DOMAIN,
+            f"anonymous-air-quality-id_{suffix}",
+            config_entry=entry,
+            disabled_by=None,
+        )
     with patch("custom_components.unifi_air_quality.PrivateProtectClient") as factory:
         client = factory.return_value
         client.async_get_snapshot = AsyncMock(return_value=snapshot)

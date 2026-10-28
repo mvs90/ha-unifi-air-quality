@@ -1,0 +1,273 @@
+{
+  "title": "UniFi Protect Air Quality",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connexion à UniFi Protect",
+        "description": "Utilisez un compte UniFi OS local dédié avec un accès en lecture à Protect.",
+        "data": {
+          "host": "Hôte",
+          "port": "Port",
+          "username": "Nom d’utilisateur local",
+          "password": "Mot de passe",
+          "verify_ssl": "Vérifier le certificat TLS"
+        },
+        "data_description": {
+          "host": "Nom d’hôte ou adresse IP uniquement, sans https://.",
+          "verify_ssl": "Activez uniquement si Home Assistant fait confiance au certificat de la console."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Se réauthentifier auprès d’UniFi Protect",
+        "description": "Saisissez le mot de passe actuel du compte local configuré.",
+        "data": {
+          "password": "Mot de passe"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossible de se connecter à UniFi Protect.",
+      "invalid_auth": "Le nom d’utilisateur ou le mot de passe est incorrect.",
+      "invalid_response": "Protect a renvoyé une réponse non prise en charge.",
+      "unknown": "Erreur inattendue. Consultez les journaux de Home Assistant."
+    },
+    "abort": {
+      "already_configured": "Cette console Protect est déjà configurée.",
+      "reauth_successful": "La réauthentification a réussi.",
+      "unique_id_mismatch": "Les identifiants correspondent à une autre console Protect."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "aqi_alarm": {
+        "name": "Alarme : Indice de qualité de l’air"
+      },
+      "co2_alarm": {
+        "name": "Alarme : Dioxyde de carbone"
+      },
+      "humidity_alarm": {
+        "name": "Alarme : Humidité"
+      },
+      "temperature_alarm": {
+        "name": "Alarme : Température"
+      },
+      "pm1_alarm": {
+        "name": "Alarme : PM1"
+      },
+      "pm25_alarm": {
+        "name": "Alarme : PM2.5"
+      },
+      "pm4_alarm": {
+        "name": "Alarme : PM4"
+      },
+      "pm10_alarm": {
+        "name": "Alarme : PM10"
+      },
+      "tvoc_alarm": {
+        "name": "Alarme : Composés organiques volatils totaux"
+      },
+      "voc_alarm": {
+        "name": "Alarme : Indice COV"
+      },
+      "nox_alarm": {
+        "name": "Alarme : Indice NOx"
+      },
+      "vape_alarm": {
+        "name": "Alarme : Indice de vapotage"
+      }
+    },
+    "event": {
+      "air_quality_alarm": {
+        "name": "Événement d’alarme de qualité de l’air"
+      }
+    },
+    "number": {
+      "ring_led_brightness": {
+        "name": "Luminosité de l’anneau LED"
+      },
+      "night_mode_brightness": {
+        "name": "Luminosité du mode nuit"
+      },
+      "vape_sensitivity": {
+        "name": "Sensibilité au vapotage"
+      },
+      "aqi_low_threshold": {
+        "name": "Seuil bas : Indice de qualité de l’air"
+      },
+      "aqi_high_threshold": {
+        "name": "Seuil haut : Indice de qualité de l’air"
+      },
+      "co2_low_threshold": {
+        "name": "Seuil bas : Dioxyde de carbone"
+      },
+      "co2_high_threshold": {
+        "name": "Seuil haut : Dioxyde de carbone"
+      },
+      "humidity_low_threshold": {
+        "name": "Seuil bas : Humidité"
+      },
+      "humidity_high_threshold": {
+        "name": "Seuil haut : Humidité"
+      },
+      "pm1_low_threshold": {
+        "name": "Seuil bas : PM1"
+      },
+      "pm1_high_threshold": {
+        "name": "Seuil haut : PM1"
+      },
+      "pm25_low_threshold": {
+        "name": "Seuil bas : PM2.5"
+      },
+      "pm25_high_threshold": {
+        "name": "Seuil haut : PM2.5"
+      },
+      "pm4_low_threshold": {
+        "name": "Seuil bas : PM4"
+      },
+      "pm4_high_threshold": {
+        "name": "Seuil haut : PM4"
+      },
+      "pm10_low_threshold": {
+        "name": "Seuil bas : PM10"
+      },
+      "pm10_high_threshold": {
+        "name": "Seuil haut : PM10"
+      },
+      "temperature_low_threshold": {
+        "name": "Seuil bas : Température"
+      },
+      "temperature_high_threshold": {
+        "name": "Seuil haut : Température"
+      },
+      "tvoc_low_threshold": {
+        "name": "Seuil bas : Composés organiques volatils totaux"
+      },
+      "tvoc_high_threshold": {
+        "name": "Seuil haut : Composés organiques volatils totaux"
+      },
+      "voc_low_threshold": {
+        "name": "Seuil bas : Indice COV"
+      },
+      "voc_high_threshold": {
+        "name": "Seuil haut : Indice COV"
+      },
+      "nox_low_threshold": {
+        "name": "Seuil bas : Indice NOx"
+      },
+      "nox_high_threshold": {
+        "name": "Seuil haut : Indice NOx"
+      },
+      "vape_high_threshold": {
+        "name": "Seuil haut : Indice de vapotage"
+      }
+    },
+    "select": {
+      "ring_led_metric": {
+        "name": "Mesure de l’anneau LED",
+        "state": {
+          "carbon_dioxide": "Dioxyde de carbone",
+          "air_quality": "Indice de qualité de l’air"
+        }
+      }
+    },
+    "sensor": {
+      "aqi": {
+        "name": "Indice de qualité de l’air"
+      },
+      "co2": {
+        "name": "Dioxyde de carbone"
+      },
+      "humidity": {
+        "name": "Humidité"
+      },
+      "temperature": {
+        "name": "Température"
+      },
+      "pm1": {
+        "name": "PM1"
+      },
+      "pm25": {
+        "name": "PM2.5"
+      },
+      "pm4": {
+        "name": "PM4"
+      },
+      "pm10": {
+        "name": "PM10"
+      },
+      "tvoc": {
+        "name": "Composés organiques volatils totaux"
+      },
+      "voc_index": {
+        "name": "Indice COV"
+      },
+      "nox_index": {
+        "name": "Indice NOx"
+      },
+      "vape_index": {
+        "name": "Indice de vapotage"
+      }
+    },
+    "switch": {
+      "status_light": {
+        "name": "Voyant d’état"
+      },
+      "ring_led": {
+        "name": "Anneau LED"
+      },
+      "activity_feedback": {
+        "name": "Retour d’activité"
+      },
+      "night_mode": {
+        "name": "Mode nuit"
+      },
+      "vape_detection": {
+        "name": "Détection du vapotage"
+      },
+      "aqi_alerts": {
+        "name": "Alertes : Indice de qualité de l’air"
+      },
+      "co2_alerts": {
+        "name": "Alertes : Dioxyde de carbone"
+      },
+      "humidity_alerts": {
+        "name": "Alertes : Humidité"
+      },
+      "pm1_alerts": {
+        "name": "Alertes : PM1"
+      },
+      "pm25_alerts": {
+        "name": "Alertes : PM2.5"
+      },
+      "pm4_alerts": {
+        "name": "Alertes : PM4"
+      },
+      "pm10_alerts": {
+        "name": "Alertes : PM10"
+      },
+      "temperature_alerts": {
+        "name": "Alertes : Température"
+      },
+      "tvoc_alerts": {
+        "name": "Alertes : Composés organiques volatils totaux"
+      },
+      "voc_alerts": {
+        "name": "Alertes : Indice COV"
+      },
+      "nox_alerts": {
+        "name": "Alertes : Indice NOx"
+      },
+      "vape_alerts": {
+        "name": "Alertes : Indice de vapotage"
+      }
+    },
+    "time": {
+      "night_mode_start": {
+        "name": "Début du mode nuit"
+      },
+      "night_mode_end": {
+        "name": "Fin du mode nuit"
+      }
+    }
+  }
+}

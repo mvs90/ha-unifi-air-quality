@@ -239,3 +239,9 @@ direct Home Assistant integration possible.
 
 This project is not affiliated with Ubiquiti Inc. UniFi and UniFi Protect are
 trademarks of their respective owner.
+
+## Support this project
+
+If you find this project useful, you can support its development and maintenance
+with a voluntary contribution via [PayPal](https://www.paypal.me/mvs90).
+Thank you for your support!

@@ -115,14 +115,20 @@ documented units nor supported ranges for them.
 
 ## Installation
 
-### HACS custom repository
+### HACS (recommended)
 
-1. In HACS, open **Integrations** and add
-   `https://github.com/mvs90/ha-unifi-air-quality` as a custom repository of
-   type **Integration**.
+1. Open HACS and search for **UniFi Protect Air Quality**.
 2. Install **UniFi Protect Air Quality** and restart Home Assistant.
 3. Go to **Settings → Devices & services → Add integration** and search for
    **UniFi Protect Air Quality**.
+
+### Custom repository fallback
+
+If the integration does not appear in HACS search yet, add
+`https://github.com/mvs90/ha-unifi-air-quality` as a custom repository of
+type **Integration** in HACS. Then follow steps 2 and 3 above.
+
+### Manual installation
 
 For manual installation, copy `custom_components/unifi_air_quality` into the
 same directory under your Home Assistant configuration directory and restart.
@@ -226,11 +232,11 @@ the repository in HACS and restart Home Assistant.
 - Newly adopted or removed sensors require reloading the integration before
   their entities are added or removed.
 - Automatic console discovery is not implemented.
-- The alpha is installable as a HACS custom repository. Submission to HACS's
-  default catalog is a separate review process. The integration ships its
+- The integration is included in HACS's default catalog. It ships its
   own `brand/` images and runs HACS validation without ignored checks; a
   separate entry in the central Home Assistant brands repository is not
-  required. See [HACS submission readiness](docs/hacs-readiness.md).
+  required. See [HACS submission readiness](docs/hacs-readiness.md) for the
+  historical submission checks.
 
 ## Acknowledgements
 

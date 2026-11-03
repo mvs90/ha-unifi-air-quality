@@ -40,6 +40,15 @@ class UnifiAirQualityCoordinator(DataUpdateCoordinator[ProtectSnapshot]):
         )
         self.client = client
         client.set_update_callback(self._handle_push_update)
+        client.set_auth_failure_callback(self._handle_auth_failure)
+
+    @callback
+    def _handle_auth_failure(self) -> None:
+        """Report a stream rejection and request new credentials."""
+        self.async_set_update_error(
+            ConfigEntryAuthFailed("Protect authentication failed")
+        )
+        self.config_entry.async_start_reauth(self.hass)
 
     async def _async_update_data(self) -> ProtectSnapshot:
         try:

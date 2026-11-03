@@ -2,6 +2,21 @@
 
 Reviewed on 2026-10-28 for release `0.5.3`.
 
+## HACS review follow-up: 0.5.4
+
+Frenck's authentication review is addressed in `0.5.4`: config entries and
+validation attempts now use separate cookie jars. The owned sessions are
+detached on unload, setup failure, and validation completion/cancellation,
+preserving Home Assistant's shared network connector. WebSocket credential
+rejection stops reconnects and requests reauthentication; the client also
+blocks subsequent automatic password attempts until a new client is created.
+The API adapter remains independent of Home Assistant.
+
+Regression tests use synthetic credentials and a loopback HTTP server to
+exercise real Set-Cookie responses, separate accounts, the untouched shared
+session, and cleanup. No live alarms or device-setting writes are required.
+The compatibility results below are the previous 0.5.3 baseline.
+
 ## Repository and packaging
 
 The public repository has a description, search topics, issues enabled, and
@@ -56,7 +71,7 @@ A separate submission to `home-assistant/brands` is not required.
 
 The HACS workflow includes every check: it has no `ignore` input. Tests,
 Ruff, HACS, and Hassfest must all pass on the final release commit. Publish
-the full `v0.5.3` GitHub release after those checks, rather than only a tag,
+the full GitHub release after those checks, rather than only a tag,
 so the submitted release includes the artwork and the complete validator.
 
 Optional integration categories are omitted because the current Hassfest

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.4
+
+- Isolate authentication cookies in a dedicated HTTP session for each config
+  entry and each setup/reauthentication validation attempt. Close sessions on
+  unload, failed setup, validation completion, and cancellation.
+- Stop WebSocket reconnects and further password logins after credentials are
+  rejected. Ask Home Assistant to start reauthentication instead of repeatedly
+  risking a UniFi OS account lockout. Transient connection failures still retry.
+- Add regression coverage for cookie isolation and authentication lifecycle.
+- Thanks to Frenck for identifying these issues during the HACS review.
+
 ## 0.5.3
 
 - Verify the full 257-test suite against Home Assistant 2026.10.4 and preview

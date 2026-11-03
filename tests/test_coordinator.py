@@ -41,3 +41,16 @@ async def test_coordinator_maps_errors(hass) -> None:
     client.async_get_snapshot = AsyncMock(side_effect=ProtectCannotConnect())
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
+
+
+async def test_stream_auth_failure_starts_reauth(hass):
+    from unittest.mock import patch
+
+    entry = MockConfigEntry()
+    client = MagicMock()
+    coordinator = UnifiAirQualityCoordinator(hass, entry, client)
+    with patch.object(entry, "async_start_reauth") as reauth:
+        coordinator._handle_auth_failure()
+    reauth.assert_called_once_with(hass)
+    assert isinstance(coordinator.last_exception, ConfigEntryAuthFailed)
+    assert not coordinator.last_update_success

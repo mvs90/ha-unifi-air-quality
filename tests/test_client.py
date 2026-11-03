@@ -44,6 +44,9 @@ class FakeResponse:
 
 
 class FakeSession:
+    def detach(self):
+        self.closed = True
+
     def __init__(self, post, get, websocket=None, patch=None):
         self.post_response = post
         self.get_response = get
@@ -632,7 +635,7 @@ async def test_websocket_loop_resets_backoff_after_clean_disconnect() -> None:
     client._websocket_once.assert_awaited_once()
 
 
-async def test_websocket_loop_reauthenticates() -> None:
+async def test_websocket_loop_stops_after_auth_rejection() -> None:
     client = _client(FakeSession(FakeResponse(), FakeResponse()))
     client._headers["Cookie"] = "expired"
     client._websocket_once = AsyncMock(side_effect=ProtectInvalidAuth())
@@ -644,9 +647,29 @@ async def test_websocket_loop_reauthenticates() -> None:
     with patch(
         "custom_components.unifi_air_quality.api.asyncio.sleep",
         side_effect=stop_after_backoff,
-    ):
+    ) as sleep:
         await client._websocket_loop()
     client._async_authenticate.assert_not_awaited()
+    client._websocket_once.assert_awaited_once()
+    sleep.assert_not_awaited()
+    assert not client.websocket_connected
+
+
+async def test_stream_auth_failure_notifies_owner_once_and_blocks_later_logins():
+    session = FakeSession(FakeResponse(status=401), FakeResponse())
+    client = _client(session)
+    callback = MagicMock()
+    client.set_auth_failure_callback(callback)
+    with patch("custom_components.unifi_air_quality.api.asyncio.sleep") as sleep:
+        await client._websocket_loop()
+    callback.assert_called_once_with()
+    sleep.assert_not_called()
+    for _ in range(3):
+        with pytest.raises(ProtectInvalidAuth):
+            await client.async_get_snapshot()
+    assert len(session.post_calls) == 1
+    await client.async_close()
+    assert session.closed
 
 
 async def test_websocket_authenticates_and_uses_last_update_id(load_fixture) -> None:
@@ -884,7 +907,7 @@ async def test_stale_request_cannot_clear_a_newer_session():
     assert client._headers
 
 
-@pytest.mark.parametrize("error", [ProtectCannotConnect(), ProtectInvalidAuth()])
+@pytest.mark.parametrize("error", [ProtectCannotConnect(), TimeoutError()])
 async def test_websocket_loop_survives_failed_login_and_retries(error):
     client = _client(FakeSession(FakeResponse(), FakeResponse()))
     client._websocket_once = AsyncMock(side_effect=[error, None])

@@ -5,10 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 import voluptuous as vol
+from aiohttp import ClientSession, CookieJar
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
     NumberSelector,
@@ -55,8 +56,19 @@ class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def _validate(self, data: dict[str, Any]) -> tuple[str, str]:
+        session = async_create_clientsession(
+            self.hass, cookie_jar=CookieJar(unsafe=True)
+        )
+        try:
+            return await self._validate_session(data, session)
+        finally:
+            session.detach()
+
+    async def _validate_session(
+        self, data: dict[str, Any], session: ClientSession
+    ) -> tuple[str, str]:
         client = PrivateProtectClient(
-            async_get_clientsession(self.hass),
+            session,
             host=data[CONF_HOST],
             port=int(data[CONF_PORT]),
             username=data[CONF_USERNAME],

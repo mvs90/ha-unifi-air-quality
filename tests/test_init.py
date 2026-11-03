@@ -1,9 +1,12 @@
 """Tests for config-entry setup and unloading."""
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.helpers import device_registry as dr
+from yarl import URL
 
 from custom_components.unifi_air_quality import async_setup_entry, async_unload_entry
 from custom_components.unifi_air_quality.const import CONF_VERIFY_SSL, DOMAIN
@@ -36,7 +39,7 @@ async def test_setup_and_unload_entry(hass, device_registry) -> None:
 
     with (
         patch(
-            "custom_components.unifi_air_quality.async_get_clientsession"
+            "custom_components.unifi_air_quality.async_create_clientsession"
         ) as get_session,
         patch("custom_components.unifi_air_quality.PrivateProtectClient") as client_cls,
         patch(
@@ -58,7 +61,11 @@ async def test_setup_and_unload_entry(hass, device_registry) -> None:
         client.async_close = AsyncMock()
 
         assert await async_setup_entry(hass, entry)
-        get_session.assert_called_once_with(hass)
+        get_session.assert_called_once()
+        assert get_session.call_args.args == (hass,)
+        jar = get_session.call_args.kwargs["cookie_jar"]
+        jar.update_cookies({"synthetic": "cookie"}, URL("https://127.0.0.1"))
+        assert jar.filter_cookies(URL("https://127.0.0.1"))
         client.start_websocket.assert_called_once()
         forward_setups.assert_awaited_once()
         assert entry.runtime_data.coordinator is coordinator
@@ -86,3 +93,60 @@ async def test_unload_stops_when_platform_unload_fails(hass) -> None:
         assert not await async_unload_entry(hass, entry)
 
     client.async_close.assert_not_awaited()
+
+
+@pytest.mark.parametrize("failure", [RuntimeError(), asyncio.CancelledError()])
+async def test_setup_failure_closes_dedicated_session(hass, failure):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_HOST: "protect.local",
+            CONF_PORT: 443,
+            CONF_USERNAME: "synthetic",
+            CONF_PASSWORD: "synthetic",
+            CONF_VERIFY_SSL: False,
+        },
+    )
+    from homeassistant.helpers.aiohttp_client import async_create_clientsession
+
+    session = async_create_clientsession(hass)
+    with (
+        patch(
+            "custom_components.unifi_air_quality.async_create_clientsession",
+            return_value=session,
+        ),
+        patch(
+            "custom_components.unifi_air_quality.PrivateProtectClient",
+            side_effect=failure,
+        ),
+    ):
+        with pytest.raises(type(failure)):
+            await async_setup_entry(hass, entry)
+    assert session.closed
+
+
+@pytest.mark.parametrize("failure", [RuntimeError(), asyncio.CancelledError()])
+async def test_refresh_failure_closes_session_before_setup_retry(hass, failure):
+    from homeassistant.helpers.aiohttp_client import async_create_clientsession
+
+    from .test_config_flow import USER_INPUT
+
+    entry = MockConfigEntry(domain=DOMAIN, data=USER_INPUT.copy())
+    session = async_create_clientsession(hass)
+    with (
+        patch(
+            "custom_components.unifi_air_quality.async_create_clientsession",
+            return_value=session,
+        ),
+        patch("custom_components.unifi_air_quality.PrivateProtectClient") as clients,
+        patch(
+            "custom_components.unifi_air_quality.UnifiAirQualityCoordinator"
+        ) as coordinators,
+    ):
+        coordinators.return_value.async_config_entry_first_refresh = AsyncMock(
+            side_effect=failure
+        )
+        with pytest.raises(type(failure)):
+            await async_setup_entry(hass, entry)
+        clients.return_value.start_websocket.assert_not_called()
+    assert session.closed

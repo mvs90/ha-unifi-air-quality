@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from aiohttp import ClientSession, CookieJar
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_HOST,
@@ -14,7 +15,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .api import PrivateProtectClient
 from .const import CONF_VERIFY_SSL, DOMAIN, MANUFACTURER
@@ -46,8 +47,20 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: UnifiAirQualityConfigEntry
 ) -> bool:
     """Set up UniFi Protect Air Quality from a config entry."""
+    session = async_create_clientsession(hass, cookie_jar=CookieJar(unsafe=True))
+    try:
+        return await _async_setup_entry(hass, entry, session)
+    except BaseException:
+        session.detach()
+        raise
+
+
+async def _async_setup_entry(
+    hass: HomeAssistant, entry: UnifiAirQualityConfigEntry, session: ClientSession
+) -> bool:
+    """Set up one entry, transferring ownership of its isolated session."""
     client = PrivateProtectClient(
-        async_get_clientsession(hass),
+        session,
         host=entry.data[CONF_HOST],
         port=entry.data[CONF_PORT],
         username=entry.data[CONF_USERNAME],

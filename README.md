@@ -16,7 +16,7 @@ MQTT, a cloud account, and an additional bridge are not required.
 
 ## Current milestone: measurements, controls, and alarm triggers
 
-Version `0.5.3` can:
+Version `0.5.4` can:
 
 - configure a local Protect console through the Home Assistant UI;
 - authenticate with a dedicated local Protect user;
@@ -149,6 +149,10 @@ integration retries a rejected bootstrap request, settings update, or WebSocket
 handshake once. Concurrent requests share the renewed session. Home Assistant
 requests reauthentication only when login or the freshly authenticated request
 is rejected; a temporarily unreachable console remains a connection failure.
+Each config entry and each setup/reauthentication attempt uses its own HTTP
+session and cookie jar, never Home Assistant's shared session. After rejected
+credentials, automatic password logins stop until reauthentication succeeds;
+the WebSocket also requests reauthentication immediately.
 
 Most consoles use a self-signed certificate. Leave certificate verification
 off for those systems; enable it when the console has a certificate trusted by

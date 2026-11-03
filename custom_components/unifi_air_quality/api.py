@@ -172,6 +172,12 @@ class PrivateProtectClient:
         self._write_lock = asyncio.Lock()
         self._auth_lock = asyncio.Lock()
         self._auth_generation = 0
+        self._auth_failed = False
+        self._auth_failure_callback: Callable[[], None] | None = None
+
+    def set_auth_failure_callback(self, callback: Callable[[], None]) -> None:
+        """Notify the owner when the stream requires new credentials."""
+        self._auth_failure_callback = callback
 
     @property
     def snapshot(self) -> ProtectSnapshot | None:
@@ -200,19 +206,26 @@ class PrivateProtectClient:
     ) -> None:
         """Create one session, sharing renewals across concurrent requests."""
         async with self._auth_lock:
+            if self._auth_failed:
+                raise ProtectInvalidAuth("Protect requires reauthentication")
             if "Cookie" in self._headers and (
                 rejected_generation is None
                 or rejected_generation != self._auth_generation
             ):
                 return
             self._headers.clear()
-            await self._async_login()
+            try:
+                await self._async_login()
+            except ProtectInvalidAuth:
+                self._auth_failed = True
+                raise
             self._auth_generation += 1
 
     def _invalidate_session(self, generation: int) -> None:
         """Discard only the session rejected by this request."""
         if generation == self._auth_generation:
             self._headers.clear()
+            self._auth_failed = True
 
     async def _async_login(self) -> None:
         try:
@@ -331,8 +344,12 @@ class PrivateProtectClient:
                 backoff = 1
             except asyncio.CancelledError:
                 raise
+            except ProtectInvalidAuth:
+                self._auth_failed = True
+                if self._auth_failure_callback is not None:
+                    self._auth_failure_callback()
+                return
             except (
-                ProtectInvalidAuth,
                 ProtectCannotConnect,
                 ClientConnectionError,
                 WSServerHandshakeError,
@@ -587,10 +604,11 @@ class PrivateProtectClient:
             self._update_callback(self._snapshot)
 
     async def async_close(self) -> None:
-        """Stop background work without closing HA's shared HTTP session."""
+        """Stop background work and close the client's dedicated HTTP session."""
         self._closing = True
         self._update_callback = None
         self._alarm_callbacks.clear()
+        self._auth_failure_callback = None
         if self._ws_task is not None:
             self._ws_task.cancel()
             try:
@@ -598,3 +616,6 @@ class PrivateProtectClient:
             except asyncio.CancelledError:
                 pass
             self._ws_task = None
+        # HA sessions share a connector: detach closes this session without
+        # closing that connector or invoking HA's intentionally blocked close().
+        self._session.detach()

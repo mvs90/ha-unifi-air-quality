@@ -304,6 +304,8 @@ class PrivateProtectClient:
         self._sensor_alarm_states: dict[tuple[str, str], ProtectAlarm] = {}
         self._alarm_states: dict[tuple[str, str], ProtectAlarm] = {}
         self._uncertain_alarm_metrics: set[tuple[str, str]] = set()
+        # Pruned orphan IDs can only be cleared by authoritative sensor status.
+        self._unresolvable_alarm_metrics: set[_AlarmKey] = set()
         self._ws_task: asyncio.Task[None] | None = None
         self.websocket_connected = False
         self._closing = False
@@ -864,22 +866,50 @@ class PrivateProtectClient:
 
         now = monotonic()
         self._verified_at[device_id] = now
-        if is_ended and key in self._uncertain_alarm_metrics:
-            if any(
-                owner == device_id
-                and self._alarm_details(self._raw_alarm_events[other])[0] == metric
-                for other, owner in self._alarm_event_devices.items()
-            ):
-                # Another expired source may still be active for the same metric.
-                self._rebuild_snapshot(cursor)
-                return
-            if known_event:
-                # The matching end is evidence of a transition from the known start.
-                self._alarm_states.setdefault(key, alarm)
-        self._uncertain_alarm_metrics.discard(key)
+        unresolved = self._has_retired_alarm_source(key)
+        confirmed_by_sensor = key in self._sensor_alarm_states
+        if is_ended and (
+            unresolved or key in self._unresolvable_alarm_metrics
+        ) and not confirmed_by_sensor:
+            # The new source ended, not necessarily a source retired at resync.
+            # No all-clear is verified while any older end is still missing.
+            self._uncertain_alarm_metrics.add(key)
+            remaining = next(
+                (
+                    active
+                    for other, active in self._active_alarm_events.items()
+                    if self._alarm_event_devices.get(other) == device_id
+                    and active.metric == metric
+                ),
+                None,
+            )
+            if remaining is None:
+                self._alarm_states.pop(key, None)
+            else:
+                # Keep current attributes from a surviving source, not the ender.
+                self._alarm_states[key] = remaining
+            self._alarm_verified_at[key] = now
+            self._rebuild_snapshot(cursor)
+            return
+        if is_ended and key in self._uncertain_alarm_metrics and known_event:
+            # The final known end confirms the previously unknown aggregate.
+            self._alarm_states.setdefault(key, alarm)
+        if not unresolved and key not in self._unresolvable_alarm_metrics:
+            self._uncertain_alarm_metrics.discard(key)
         self._alarm_verified_at[key] = now
         self._refresh_alarm_state(device_id, alarm.metric, alarm)
         self._rebuild_snapshot(cursor)
+
+    def _has_retired_alarm_source(self, key: _AlarmKey) -> bool:
+        """Identify orphaned event starts with no authoritative ending yet."""
+        for event_id, event in self._raw_alarm_events.items():
+            if event_id in self._active_alarm_events:
+                continue
+            if self._alarm_event_devices.get(event_id) != key[0]:
+                continue
+            if self._alarm_details(event)[0] == key[1]:
+                return True
+        return False
 
     def _reconcile_bootstrap_alarms(
         self, snapshot: ProtectSnapshot, event_alarms: set[_AlarmKey]
@@ -904,8 +934,13 @@ class PrivateProtectClient:
             if event_id not in self._active_alarm_events
         ]
         for event_id in retired[:-_RETIRED_ALARM_EVENT_LIMIT]:
-            self._raw_alarm_events.pop(event_id)
-            self._alarm_event_devices.pop(event_id, None)
+            owner = self._alarm_event_devices.pop(event_id, None)
+            event = self._raw_alarm_events.pop(event_id)
+            if owner is not None:
+                metric = self._alarm_details(event)[0]
+                if metric is not None:
+                    # Losing the event ID must never manufacture an all-clear.
+                    self._unresolvable_alarm_metrics.add((owner, metric))
         for event_id, owner in tuple(self._alarm_event_devices.items()):
             if owner not in device_ids:
                 self._raw_alarm_events.pop(event_id, None)
@@ -924,6 +959,10 @@ class PrivateProtectClient:
             if key[0] in device_ids
             and now - verified < DATA_FRESHNESS_SECONDS
             and (key in preserved or key not in previous)
+        }
+        self._unresolvable_alarm_metrics = {
+            key for key in self._unresolvable_alarm_metrics
+            if key[0] in device_ids
         }
         self._uncertain_alarm_metrics = {
             key
@@ -968,6 +1007,22 @@ class PrivateProtectClient:
             )
             alarm = ProtectAlarm(metric, status, value)
             key = (device_id, metric)
+            if status.casefold() in _NON_ALARM_STATUSES:
+                # A current normal reading, unlike a missing bootstrap status,
+                # authoritatively closes every outstanding event for this metric.
+                for event_id, event in tuple(self._raw_alarm_events.items()):
+                    if (
+                        event_id not in self._active_alarm_events
+                        and self._alarm_event_devices.get(event_id) == device_id
+                        and self._alarm_details(event)[0] == metric
+                    ):
+                        self._raw_alarm_events.pop(event_id, None)
+                        self._active_alarm_events.pop(event_id, None)
+                        self._alarm_event_devices.pop(event_id, None)
+                self._unresolvable_alarm_metrics.discard(key)
+                if key in self._uncertain_alarm_metrics:
+                    # End after verified normal, not after an unknown resync.
+                    self._alarm_states.setdefault(key, alarm)
             self._uncertain_alarm_metrics.discard(key)
             # A verified status confirms device liveness, independently of a value.
             now = monotonic()
@@ -1029,6 +1084,9 @@ class PrivateProtectClient:
                     timestamps.pop(key)
         self._uncertain_alarm_metrics = {
             key for key in self._uncertain_alarm_metrics if key[0] != device_id
+        }
+        self._unresolvable_alarm_metrics = {
+            key for key in self._unresolvable_alarm_metrics if key[0] != device_id
         }
         for key in tuple(self._sensor_alarm_states):
             if key[0] == device_id:

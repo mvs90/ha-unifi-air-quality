@@ -209,6 +209,10 @@ Reconnects refresh bootstrap before following its cursor. Current measurement
 statuses replace transient alarm caches, clearing missed end events. An orphaned
 alarm without a confirming status expires to **unknown**. Recent event identities
 are retained so a later matching Protect end frame can resolve that alarm.
+A newer alarm ending does **not** confirm an older unresolved event has ended:
+the aggregate remains unknown until the last known source ends or a verified
+normal sensor status confirms all-clear. If bounded identity history is pruned,
+only an authoritative normal status can clear the remaining uncertainty.
 Existing public alarm event types and unique IDs are retained.
 Multiple event IDs and sensor/event sources remain aggregated during streaming.
 Repeated reconnect failures use 1, 2, 4, 8, 16, 30 second delays (30-second cap);

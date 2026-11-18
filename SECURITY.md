@@ -16,8 +16,12 @@ AWS-key samples verify both scanners can fail. Logs contain advisory IDs and
 package versions; secret values and full audit reports are not published.
 
 Actions are pinned to official 40-character commits (release tags are peeled to
-commits). HACS/Hassfest have no numbered action releases; their reviewed official
-branch revisions are pinned and dated. Dependabot checks action and Python pins
+commits). HACS/Hassfest wrappers internally use mutable image tags, so their official
+images are invoked directly with registry-verified immutable SHA-256 digests.
+Review the official `hacs/action:main` and `home-assistant/hassfest:latest` image
+digests weekly alongside Dependabot PRs, update their workflow pins and run the
+complete validators before merging. Image updates are maintainer-owned; the
+weekly workflow does not grant write access to create update PRs. Dependabot checks action and Python pins
 weekly at 09:00 Europe/Berlin. Review upstream changes and all CI results before
 merging its PRs. No workflow needs write permissions; checkout does not persist
 credentials in the Security job.

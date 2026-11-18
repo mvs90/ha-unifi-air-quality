@@ -736,7 +736,12 @@ class PrivateProtectClient:
         pushes: _BootstrapPushes,
     ) -> dict[str, Any]:
         """Combine current bootstrap readings with fields changed during the read."""
-        devices = {device.id: device.raw for device in snapshot.devices}
+        # Field paths are canonical, so REST siblings must share that namespace
+        # before a partial push is overlaid onto a legacy-key bootstrap reading.
+        devices = {
+            device.id: _normalize_sensor_update(device.raw)
+            for device in snapshot.devices
+        }
         for device_id, fields in pushes.sensor_fields.items():
             current = self._raw_devices.get(device_id)
             if current is None:
@@ -969,16 +974,16 @@ class PrivateProtectClient:
             raise ProtectProtocolError("Sensor update has no identifier")
 
         operation = action.get("action")
-        previous = self._raw_devices.get(device_id)
+        cached = self._raw_devices.get(device_id)
+        # Preserve an unmodified canonical view for changed-field tracking too;
+        # otherwise an alias rename can look like replacement of the whole reading.
+        previous = _normalize_sensor_update(cached) if cached is not None else None
         if operation == "remove":
             self._raw_devices.pop(device_id, None)
             self._clear_device_alarm_states(device_id)
         elif operation in ("add", "update"):
             data = _normalize_sensor_update(data)
-            # Migrate cached legacy siblings before merging a partial alias frame.
-            current = _normalize_sensor_update(
-                self._raw_devices.get(device_id, {"id": device_id})
-            )
+            current = deepcopy(previous) if previous is not None else {"id": device_id}
             _deep_merge(current, data)
             if _is_air_quality_sensor(current):
                 _validate_sensor(current)

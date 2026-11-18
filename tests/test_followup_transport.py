@@ -501,3 +501,86 @@ async def test_partial_alias_update_preserves_legacy_cached_siblings(
         }
         assert client.is_measurement_fresh("anonymous-air-quality-id", canonical)
         assert client.is_alarm_fresh("anonymous-air-quality-id", canonical)
+
+
+@pytest.mark.parametrize(("canonical", "legacy"), list(MEASUREMENT_ALIASES.items()))
+@pytest.mark.parametrize("cached_legacy", [True, False])
+@pytest.mark.parametrize("bootstrap_legacy", [True, False])
+@pytest.mark.parametrize("pushed_field", ["status", "value"])
+async def test_partial_alias_push_overlays_only_its_field_during_bootstrap(
+    load_fixture, canonical, legacy, cached_legacy, bootstrap_legacy, pushed_field
+):
+    """Keep newly read REST siblings when an alias push arrives during the read."""
+    cached_key = legacy if cached_legacy else canonical
+    bootstrap_key = legacy if bootstrap_legacy else canonical
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    payload["sensors"][0]["airQuality"] = {
+        cached_key: {"value": 3, "status": "normal"},
+        "temperature": {"value": 20, "status": "normal"},
+    }
+    refreshed = json.loads(json.dumps(payload))
+    refreshed["sensors"][0]["airQuality"] = {
+        bootstrap_key: {"value": 50, "status": "critical"},
+        "temperature": {"value": 25, "status": "normal"},
+    }
+    refreshed["sensors"][0]["name"] = "Updated from REST"
+    refreshed["sensors"][0]["ledSettings"] = {"isEnabled": False, "level": 77}
+    started, release = asyncio.Event(), asyncio.Event()
+
+    class SlowBootstrap(FakeResponse):
+        """Hold the HTTP body while one independent metric field is pushed."""
+
+        async def json(self, **kwargs):
+            """Publish the deterministic in-flight point before releasing REST."""
+            started.set()
+            await release.wait()
+            return refreshed
+
+    client = _client(
+        FakeSession(
+            FakeResponse(), [FakeResponse(payload=payload), SlowBootstrap()]
+        )
+    )
+    device_id = "anonymous-air-quality-id"
+    with patch(
+        "custom_components.unifi_air_quality.api.monotonic", return_value=10
+    ) as now:
+        await client.async_get_snapshot()
+        pending = asyncio.create_task(client.async_get_snapshot())
+        try:
+            await asyncio.wait_for(started.wait(), 1)
+            now.return_value = 100
+            pushed_value = "high" if pushed_field == "status" else 9
+            push(client, {"airQuality": {legacy: {pushed_field: pushed_value}}})
+            # A status update alone must not make the old cached number fresh.
+            assert client._metric_verified_at[(device_id, canonical)] == (
+                10 if pushed_field == "status" else 100
+            )
+            now.return_value = 110
+            release.set()
+            snapshot = await pending
+        finally:
+            release.set()
+            await pending
+
+        device = snapshot.devices[0]
+        expected = {"value": 50, "status": "critical"} | {
+            pushed_field: pushed_value
+        }
+        assert device.raw["airQuality"][canonical] == expected
+        assert legacy not in device.raw["airQuality"]
+        assert device.raw["airQuality"]["temperature"] == {
+            "value": 25, "status": "normal"
+        }
+        assert device.name == "Updated from REST"
+        assert device.raw["ledSettings"] == {"isEnabled": False, "level": 77}
+        assert client.is_measurement_fresh(device_id, canonical)
+        assert client.is_alarm_fresh(device_id, canonical)
+        description = next(
+            item for item in SENSOR_DESCRIPTIONS if item.payload_key == canonical
+        )
+        coordinator = _coordinator(device)
+        coordinator.client = client
+        sensor = UnifiAirQualitySensor(coordinator, device_id, description)
+        assert sensor.native_value == expected["value"]
+        assert sensor.extra_state_attributes == {"protect_status": expected["status"]}

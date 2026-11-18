@@ -1,90 +1,138 @@
-"""Anonymized diagnostics for UniFi Protect Air Quality."""
+"""Allowlisted diagnostics with identifiers scoped to a single export."""
 
 from __future__ import annotations
 
-from hashlib import sha256
+import math
+import re
 from typing import Any
+from uuid import uuid4
 
-from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
 from . import UnifiAirQualityConfigEntry
+from .api import _ALARM_STATUSES, _MEASUREMENT_KEYS, _NON_ALARM_STATUSES
+from .const import CONF_VERIFY_SSL
 
-_REDACT_CONFIG = {CONF_HOST, CONF_PASSWORD, CONF_USERNAME}
-_IDENTIFIER_KEYS = {
-    "id",
-    "mac",
-    "serial",
-    "serialNumber",
-    "authUserId",
-    "accessKey",
+_REDACTED = "**REDACTED**"
+# Unknown keys are omitted, including numeric fields and nested containers.
+_CONTAINERS = {"airQuality": _MEASUREMENT_KEYS}
+_SETTINGS = {
+    "ringLedBrightness",
+    "ringLedMetric",
+    "nightModeEnabled",
+    "nightModeBrightness",
+    "isEnabled",
+    "activityFeedback",
+    "lowThreshold",
+    "highThreshold",
+    "sensitivity",
 }
-_SECRET_KEYS = {
-    "password",
-    "token",
-    "cookie",
-    "credential",
-    "privateKey",
-    "apiKey",
-}
-_SAFE_STRING_KEYS = {
-    "modelKey",
-    "model",
-    "type",
-    "productModel",
-    "sku",
-    "marketName",
-    "firmwareVersion",
-    "state",
-    "status",
-    "unit",
-    "mode",
+_SETTINGS_GROUPS = {f"{metric}Settings" for metric in _MEASUREMENT_KEYS} | {
+    "vapeSensitivitySettings"
 }
 
 
-def _anonymous_identifier(value: str) -> str:
-    digest = sha256(value.encode()).hexdigest()[:10]
-    return f"<anonymous:{digest}>"
-
-
-def sanitize_raw(value: Any, key: str | None = None) -> Any:
-    """Preserve wire shape and measurements while removing identifying strings."""
-    if key in _SECRET_KEYS:
-        return "**REDACTED**"
-    if isinstance(value, dict):
-        return {
-            item_key: sanitize_raw(item, item_key) for item_key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [sanitize_raw(item, key) for item in value]
-    if isinstance(value, str):
-        if key in _IDENTIFIER_KEYS:
-            return _anonymous_identifier(value)
-        if key in _SAFE_STRING_KEYS:
-            return value
-        return "**REDACTED**"
-    if value is None or isinstance(value, (bool, int, float)):
+def safe_version(value: Any) -> str | None:
+    """Export version syntax only, never arbitrary server-supplied text."""
+    if isinstance(value, str) and re.fullmatch(r"\d+(?:\.\d+){1,3}", value):
         return value
-    return "**REDACTED**"
+    return None
+
+
+def sanitize_raw(
+    value: Any,
+    key: str | None = None,
+    *,
+    aliases: dict[str, str] | None = None,
+    prefix: str | None = None,
+) -> Any:
+    """Retain current measurements/settings from a small structural allowlist.
+
+    Random per-export aliases preserve within-export correlation only. No hash
+    or stable fingerprint of a MAC, serial, host or device identifier is exported.
+    """
+    aliases = {} if aliases is None else aliases
+    prefix = prefix or uuid4().hex
+    if not isinstance(value, dict):
+        return _REDACTED
+    result = {}
+    allowed = (
+        _CONTAINERS.get(key, set())
+        if key == "airQuality"
+        else _SETTINGS | _SETTINGS_GROUPS
+        if key in {"airQualitySettings", "ledSettings"} | _SETTINGS_GROUPS
+        else {"value", "status"}
+        if key in _MEASUREMENT_KEYS
+        else {
+            "id",
+            "model",
+            "type",
+            "isConnected",
+            "firmwareVersion",
+            "airQuality",
+            "airQualitySettings",
+            "ledSettings",
+        }
+    )
+    for field, item in value.items():
+        if field not in allowed:
+            continue
+        if field == "id" and isinstance(item, str):
+            result[field] = aliases.setdefault(
+                item, f"<export:{prefix}:device{len(aliases) + 1}>"
+            )
+        elif field == "firmwareVersion":
+            result[field] = safe_version(item)
+        elif field in {"model", "type"}:
+            result[field] = "UP-AirQuality" if item == "UP-AirQuality" else _REDACTED
+        elif field == "status":
+            result[field] = (
+                item
+                if isinstance(item, str)
+                and item.casefold() in _NON_ALARM_STATUSES | _ALARM_STATUSES
+                else _REDACTED
+            )
+        elif isinstance(item, dict):
+            result[field] = sanitize_raw(item, field, aliases=aliases, prefix=prefix)
+        elif (
+            item is None
+            or isinstance(item, bool)
+            or (isinstance(item, (int, float)) and math.isfinite(item))
+        ):
+            result[field] = item
+        else:
+            result[field] = _REDACTED
+    return result
 
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: UnifiAirQualityConfigEntry
 ) -> dict[str, Any]:
-    """Return safe diagnostics for a config entry."""
+    """Export current troubleshooting state, excluding history and credentials."""
     runtime = entry.runtime_data
     snapshot = runtime.coordinator.data
+    aliases: dict[str, str] = {}
+    prefix = uuid4().hex
     return {
-        "config_entry": async_redact_data(dict(entry.data), _REDACT_CONFIG),
+        "config_entry": {
+            CONF_HOST: _REDACTED,
+            CONF_USERNAME: _REDACTED,
+            CONF_PASSWORD: _REDACTED,
+            CONF_VERIFY_SSL: entry.data.get(CONF_VERIFY_SSL),
+        },
         "transport": {
             "adapter": "private_bootstrap_websocket",
             "websocket_connected": runtime.client.websocket_connected,
-            "protect_version": snapshot.protect_version,
+            "protocol_error": bool(runtime.client.protocol_error),
+            "protect_version": safe_version(snapshot.protect_version),
             "air_quality_device_count": len(snapshot.devices),
             "active_alarm_count": sum(
                 len(device.active_alarms) for device in snapshot.devices
             ),
         },
-        "devices": [sanitize_raw(device.raw) for device in snapshot.devices],
+        "devices": [
+            sanitize_raw(device.raw, aliases=aliases, prefix=prefix)
+            for device in snapshot.devices
+        ],
     }

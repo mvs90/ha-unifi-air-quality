@@ -24,11 +24,14 @@ from .api import (
     ProtectCannotConnect,
     ProtectInvalidAuth,
     ProtectProtocolError,
+    ProtectTlsError,
 )
 from .const import CONF_VERIFY_SSL, DEFAULT_PORT, DEFAULT_VERIFY_SSL, DOMAIN
 
 
 def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
+    """Build the connection form, preserving any explicit saved TLS choice."""
+    # Only new connections receive the secure certificate-verification default.
     values = defaults or {}
     return vol.Schema(
         {
@@ -56,6 +59,8 @@ class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def _validate(self, data: dict[str, Any]) -> tuple[str, str]:
+        """Validate a setup attempt with an isolated session and cleanup."""
+        # Detach the attempt's session even if construction or cancellation fails.
         session = async_create_clientsession(
             self.hass, cookie_jar=CookieJar(unsafe=True)
         )
@@ -67,6 +72,8 @@ class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def _validate_session(
         self, data: dict[str, Any], session: ClientSession
     ) -> tuple[str, str]:
+        """Validate credentials by fetching a complete Protect bootstrap."""
+        # The client owns this attempt's cookies and is closed on every exit path.
         client = PrivateProtectClient(
             session,
             host=data[CONF_HOST],
@@ -92,6 +99,8 @@ class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 unique_id, title = await self._validate(user_input)
             except ProtectInvalidAuth:
                 errors["base"] = "invalid_auth"
+            except ProtectTlsError:
+                errors["base"] = "tls_error"
             except ProtectCannotConnect:
                 errors["base"] = "cannot_connect"
             except ProtectProtocolError:

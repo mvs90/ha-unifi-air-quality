@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "Hostname or IP address only, without https://.",
-          "verify_ssl": "Enable only when Home Assistant trusts the console certificate."
+          "verify_ssl": "Verify the console identity (recommended). Disabling verification allows interception of credentials and readings."
         }
       },
       "reauth_confirm": {
@@ -29,6 +29,7 @@
       "cannot_connect": "Failed to connect to UniFi Protect.",
       "invalid_auth": "The username or password is invalid.",
       "invalid_response": "Protect returned an unsupported response.",
+      "tls_error": "The console TLS certificate is not trusted. Use a certificate issued by a CA trusted by Home Assistant and a matching hostname.",
       "unknown": "Unexpected error. Check the Home Assistant logs."
     },
     "abort": {

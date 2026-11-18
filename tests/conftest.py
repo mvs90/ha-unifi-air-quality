@@ -27,6 +27,7 @@ def load_fixture():
     """Load a fixture as text."""
 
     def _load(name: str) -> str:
+        """Provide load for the isolated regression scenario."""
         return (Path(__file__).parent / "fixtures" / name).read_text()
 
     return _load

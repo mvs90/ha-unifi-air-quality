@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import UnifiAirQualityConfigEntry
 from .coordinator import UnifiAirQualityCoordinator
-from .entity import UnifiAirQualityEntity
+from .entity import UnifiAirQualityEntity, async_setup_dynamic_entities
 
 LED_METRIC_VALUES = {"carbon_dioxide": 0, "air_quality": 1}
 
@@ -29,9 +29,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up ring LED metric selects."""
     coordinator = entry.runtime_data.coordinator
-    async_add_entities(
-        RingLedMetricSelect(coordinator, device.id)
-        for device in coordinator.data.devices
+    async_setup_dynamic_entities(
+        entry,
+        async_add_entities,
+        lambda device_id: (RingLedMetricSelect(coordinator, device_id),),
     )
 
 
@@ -42,16 +43,22 @@ class RingLedMetricSelect(UnifiAirQualityEntity, SelectEntity):
     _attr_options = list(LED_METRIC_VALUES)
 
     def __init__(self, coordinator: UnifiAirQualityCoordinator, device_id: str) -> None:
+        """Initialize this component with its entry-scoped dependencies."""
+        # Keep all mutable state scoped to this instance and its config entry.
         super().__init__(coordinator, device_id, LED_METRIC_DESCRIPTION.key)
 
     @property
     def current_option(self) -> str | None:
+        """Translate the confirmed numeric LED metric into an HA option."""
+        # Unknown firmware enum values remain unknown rather than selecting a default.
         value = self.raw_value(("airQualitySettings", "ringLedMetric"))
         return next(
             (option for option, raw in LED_METRIC_VALUES.items() if raw == value), None
         )
 
     async def async_select_option(self, option: str) -> None:
+        """Write the selected LED metric using the existing Protect enum."""
+        # The HA selector validates the option before mapping it to the wire value.
         await self.async_write_value(
             ("airQualitySettings", "ringLedMetric"), LED_METRIC_VALUES[option]
         )

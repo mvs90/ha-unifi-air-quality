@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "Pouze název hostitele nebo IP adresa, bez https://.",
-          "verify_ssl": "Povolte pouze tehdy, pokud Home Assistant důvěřuje certifikátu konzole."
+          "verify_ssl": "Verify the console identity (recommended). Disabling verification allows interception of credentials and readings."
         }
       },
       "reauth_confirm": {
@@ -29,6 +29,7 @@
       "cannot_connect": "Připojení k UniFi Protect se nezdařilo.",
       "invalid_auth": "Uživatelské jméno nebo heslo není platné.",
       "invalid_response": "Protect vrátil nepodporovanou odpověď.",
+      "tls_error": "The console TLS certificate is not trusted. Use a certificate issued by a CA trusted by Home Assistant and a matching hostname.",
       "unknown": "Neočekávaná chyba. Zkontrolujte protokoly Home Assistant."
     },
     "abort": {

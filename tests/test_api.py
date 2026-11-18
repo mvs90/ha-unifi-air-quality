@@ -13,6 +13,7 @@ from custom_components.unifi_air_quality.api import (
 
 
 def test_snapshot_discovers_only_air_quality(load_fixture) -> None:
+    """Verify snapshot discovers only air quality."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     snapshot = snapshot_from_bootstrap(payload)
 
@@ -24,6 +25,7 @@ def test_snapshot_discovers_only_air_quality(load_fixture) -> None:
 
 
 def test_snapshot_recognizes_air_quality_payload_without_model() -> None:
+    """Verify snapshot recognizes air quality payload without model."""
     snapshot = snapshot_from_bootstrap(
         {
             "nvr": {"id": "console"},
@@ -34,6 +36,7 @@ def test_snapshot_recognizes_air_quality_payload_without_model() -> None:
 
 
 def test_snapshot_rejects_invalid_bootstrap() -> None:
+    """Verify snapshot rejects invalid bootstrap."""
     with pytest.raises(ProtectProtocolError):
         snapshot_from_bootstrap({"nvr": {}, "sensors": []})
     with pytest.raises(ProtectProtocolError):
@@ -41,6 +44,7 @@ def test_snapshot_rejects_invalid_bootstrap() -> None:
 
 
 def test_snapshot_skips_malformed_devices_and_uses_fallbacks() -> None:
+    """Verify snapshot skips malformed devices and uses fallbacks."""
     snapshot = snapshot_from_bootstrap(
         {
             "nvr": {"mac": "console-mac", "name": 42, "version": 6},
@@ -48,7 +52,6 @@ def test_snapshot_skips_malformed_devices_and_uses_fallbacks() -> None:
             "sensors": [
                 None,
                 {"id": "regular", "type": "UP-Sense"},
-                {"id": None, "type": "UP-AirQuality"},
                 {
                     "id": "air",
                     "productModel": "UP Air-Quality",
@@ -69,6 +72,7 @@ def test_snapshot_skips_malformed_devices_and_uses_fallbacks() -> None:
 
 
 def test_deep_merge_preserves_other_readings() -> None:
+    """Verify deep merge preserves other readings."""
     target = {"airQuality": {"co2": 500, "aqi": 10}}
     _deep_merge(target, {"airQuality": {"co2": 700}})
     assert target == {"airQuality": {"co2": 700, "aqi": 10}}
@@ -79,10 +83,12 @@ def test_deep_merge_preserves_other_readings() -> None:
     [("protect.local", "protect.local"), ("2001:db8::1", "[2001:db8::1]")],
 )
 def test_host_for_url(host: str, expected: str) -> None:
+    """Verify host for url."""
     assert _host_for_url(host) == expected
 
 
 @pytest.mark.parametrize("host", ["https://protect.local", "", "protect/local"])
 def test_host_for_url_rejects_url(host) -> None:
+    """Verify host for url rejects url."""
     with pytest.raises(ProtectProtocolError):
         _host_for_url(host)

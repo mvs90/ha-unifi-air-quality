@@ -12,6 +12,7 @@ from custom_components.unifi_air_quality.sensor import (
 
 
 def _device(*, connected: bool = True) -> AirQualityDevice:
+    """Provide device for the isolated regression scenario."""
     return AirQualityDevice(
         "device-id",
         "Office air",
@@ -29,6 +30,7 @@ def _device(*, connected: bool = True) -> AirQualityDevice:
 
 
 def _coordinator(device: AirQualityDevice):
+    """Provide coordinator for the isolated regression scenario."""
     coordinator = MagicMock()
     coordinator.data = ProtectSnapshot("console", "Protect", "6.2", "1", (device,))
     coordinator.last_update_success = True
@@ -36,8 +38,12 @@ def _coordinator(device: AirQualityDevice):
 
 
 async def test_platform_adds_every_measurement(hass) -> None:
+    """Verify platform adds every measurement."""
     coordinator = _coordinator(_device())
-    entry = SimpleNamespace(runtime_data=SimpleNamespace(coordinator=coordinator))
+    entry = SimpleNamespace(
+        runtime_data=SimpleNamespace(coordinator=coordinator),
+        async_on_unload=MagicMock(),
+    )
     added = []
 
     await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
@@ -47,6 +53,7 @@ async def test_platform_adds_every_measurement(hass) -> None:
 
 
 def test_sensor_reads_value_status_and_device_info() -> None:
+    """Verify sensor reads value status and device info."""
     coordinator = _coordinator(_device())
     description = next(item for item in SENSOR_DESCRIPTIONS if item.key == "co2")
     entity = UnifiAirQualitySensor(coordinator, "device-id", description)
@@ -58,6 +65,7 @@ def test_sensor_reads_value_status_and_device_info() -> None:
 
 
 def test_zero_value_is_preserved() -> None:
+    """Verify zero value is preserved."""
     coordinator = _coordinator(_device())
     description = next(item for item in SENSOR_DESCRIPTIONS if item.key == "vape_index")
     entity = UnifiAirQualitySensor(coordinator, "device-id", description)
@@ -66,6 +74,7 @@ def test_zero_value_is_preserved() -> None:
 
 
 def test_tvoc_is_an_unscaled_index() -> None:
+    """Verify tvoc is an unscaled index."""
     description = next(item for item in SENSOR_DESCRIPTIONS if item.key == "tvoc")
 
     assert description.native_unit_of_measurement is None
@@ -73,6 +82,7 @@ def test_tvoc_is_an_unscaled_index() -> None:
 
 
 def test_invalid_or_missing_measurement_is_unknown() -> None:
+    """Verify invalid or missing measurement is unknown."""
     coordinator = _coordinator(_device())
     humidity = next(item for item in SENSOR_DESCRIPTIONS if item.key == "humidity")
     pm10 = next(item for item in SENSOR_DESCRIPTIONS if item.key == "pm10")
@@ -86,6 +96,7 @@ def test_invalid_or_missing_measurement_is_unknown() -> None:
 
 
 def test_disconnected_or_removed_device_is_unavailable() -> None:
+    """Verify disconnected or removed device is unavailable."""
     coordinator = _coordinator(_device(connected=False))
     description = SENSOR_DESCRIPTIONS[0]
     entity = UnifiAirQualitySensor(coordinator, "device-id", description)

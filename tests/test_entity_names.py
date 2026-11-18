@@ -22,6 +22,7 @@ LANGUAGES = sorted(
 
 
 def test_english_catalog_covers_the_translation_source():
+    """Verify english catalog covers the translation source."""
     assert json.loads((INTEGRATION_PATH / "translations/en.json").read_text()) == (
         json.loads((INTEGRATION_PATH / "strings.json").read_text())
     )
@@ -29,7 +30,10 @@ def test_english_catalog_covers_the_translation_source():
 
 @pytest.mark.parametrize("language", LANGUAGES)
 def test_translation_catalog_is_complete(language):
+    """Verify translation catalog is complete."""
+
     def flatten(value, prefix=""):
+        """Provide flatten for the isolated regression scenario."""
         if isinstance(value, dict):
             result = {}
             for key, child in value.items():
@@ -46,6 +50,7 @@ def test_translation_catalog_is_complete(language):
 
 
 def _entry(hass):
+    """Provide entry for the isolated regression scenario."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -61,6 +66,7 @@ def _entry(hass):
 
 
 def _mock_client(factory, load_fixture):
+    """Provide mock client for the isolated regression scenario."""
     client = factory.return_value
     client.async_get_snapshot = AsyncMock(
         return_value=snapshot_from_bootstrap(
@@ -76,6 +82,7 @@ def _mock_client(factory, load_fixture):
 async def test_fresh_install_names_all_entities_and_loads_config_translations(
     hass, load_fixture, language
 ):
+    """Verify fresh install names all entities and loads config translations."""
     hass.config.language = language
     entry = _entry(hass)
     translated_file = INTEGRATION_PATH / "translations" / f"{language}.json"
@@ -127,6 +134,7 @@ async def test_fresh_install_names_all_entities_and_loads_config_translations(
 async def test_existing_names_are_repaired_without_changing_ids_or_custom_names(
     hass, load_fixture, hass_ws_client
 ):
+    """Verify existing names are repaired without changing ids or custom names."""
     hass.config.language = "en"
     entry = _entry(hass)
     registry = er.async_get(hass)
@@ -189,6 +197,7 @@ async def test_existing_names_are_repaired_without_changing_ids_or_custom_names(
 
 
 async def test_nox_is_opt_in_and_can_be_enabled_in_home_assistant(hass, load_fixture):
+    """Verify nox is opt in and can be enabled in home assistant."""
     entry = _entry(hass)
     registry = er.async_get(hass)
 
@@ -230,6 +239,7 @@ async def test_nox_is_opt_in_and_can_be_enabled_in_home_assistant(hass, load_fix
 
 
 async def test_user_disabled_nox_stays_disabled_after_reload(hass, load_fixture):
+    """Verify user disabled nox stays disabled after reload."""
     entry = _entry(hass)
     registry = er.async_get(hass)
     nox = registry.async_get_or_create(

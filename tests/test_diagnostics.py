@@ -22,35 +22,36 @@ from .ha_test_helpers import MockConfigEntry
 
 
 def test_sanitize_raw_preserves_shape_and_measurements(load_fixture) -> None:
+    """Verify sanitize raw preserves shape and measurements."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     sanitized = sanitize_raw(payload["sensors"][0])
 
     assert sanitized["airQuality"]["co2"] == 612
     assert sanitized["model"] == "UP-AirQuality"
-    assert sanitized["id"].startswith("<anonymous:")
-    assert sanitized["mac"].startswith("<anonymous:")
-    assert sanitized["name"] == "**REDACTED**"
+    assert sanitized["id"].startswith("<export:")
+    assert "mac" not in sanitized
+    assert "name" not in sanitized
     serialized = json.dumps(sanitized)
     assert "Anonymous Room" not in serialized
     assert "00:00:00:00:00:00" not in serialized
 
 
 def test_sanitize_raw_redacts_unknown_strings_and_secrets() -> None:
+    """Verify sanitize raw redacts unknown strings and secrets."""
     sanitized = sanitize_raw(
         {"newFirmwareField": "possibly personal", "token": "secret"}
     )
-    assert sanitized == {
-        "newFirmwareField": "**REDACTED**",
-        "token": "**REDACTED**",
-    }
+    assert sanitized == {}
 
 
 def test_sanitize_raw_lists_and_unknown_types() -> None:
-    assert sanitize_raw([1, "private"]) == [1, "**REDACTED**"]
+    """Verify sanitize raw lists and unknown types."""
+    assert sanitize_raw([1, "private"]) == "**REDACTED**"
     assert sanitize_raw(object()) == "**REDACTED**"
 
 
 async def test_config_entry_diagnostics(hass) -> None:
+    """Verify config entry diagnostics."""
     device = AirQualityDevice(
         "sensor",
         "Private room",
@@ -76,5 +77,5 @@ async def test_config_entry_diagnostics(hass) -> None:
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
     assert diagnostics["transport"]["air_quality_device_count"] == 1
     assert diagnostics["transport"]["active_alarm_count"] == 1
-    assert diagnostics["devices"] == [{"co2": 600}]
+    assert diagnostics["devices"] == [{}]
     assert diagnostics["config_entry"][CONF_PASSWORD] == "**REDACTED**"

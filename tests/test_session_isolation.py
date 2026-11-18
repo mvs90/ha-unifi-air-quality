@@ -23,13 +23,17 @@ from .test_config_flow import USER_INPUT
 async def test_login_cookies_do_not_reach_shared_or_other_entry_session(
     hass, socket_enabled
 ):
+    """Verify login cookies do not reach shared or other entry session."""
+
     async def login(request):
+        """Provide login for the isolated regression scenario."""
         account = (await request.json())["username"]
         response = web.json_response({})
         response.set_cookie("SESSION", account)
         return response
 
     async def bootstrap(request):
+        """Provide bootstrap for the isolated regression scenario."""
         return web.json_response(
             {
                 "nvr": {"id": "synthetic-console"},
@@ -38,6 +42,7 @@ async def test_login_cookies_do_not_reach_shared_or_other_entry_session(
         )
 
     async def cookies(request):
+        """Provide cookies for the isolated regression scenario."""
         return web.json_response({"account": request.cookies.get("SESSION")})
 
     app = web.Application()
@@ -97,11 +102,13 @@ async def test_login_cookies_do_not_reach_shared_or_other_entry_session(
 
 @pytest.mark.parametrize("error", [None, RuntimeError(), asyncio.CancelledError()])
 async def test_config_validation_closes_session_on_every_exit(hass, error):
+    """Verify config validation closes session on every exit."""
     flow = UnifiAirQualityConfigFlow()
     flow.hass = hass
     captured = []
 
     def create_client(session, **kwargs):
+        """Provide create client for the isolated regression scenario."""
         captured.append(session)
         if error:
             raise error
@@ -128,6 +135,7 @@ async def test_config_validation_closes_session_on_every_exit(hass, error):
 
 
 async def test_setup_entries_own_distinct_sessions_and_close_on_unload(hass):
+    """Verify setup entries own distinct sessions and close on unload."""
     from custom_components.unifi_air_quality.models import ProtectSnapshot
 
     entries = [MockConfigEntry(domain=DOMAIN, data=USER_INPUT.copy()) for _ in range(2)]
@@ -136,6 +144,7 @@ async def test_setup_entries_own_distinct_sessions_and_close_on_unload(hass):
     sessions = []
 
     def create_client(session, **kwargs):
+        """Provide create client for the isolated regression scenario."""
         sessions.append(session)
         client = AsyncMock()
         from unittest.mock import MagicMock

@@ -11,7 +11,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import UnifiAirQualityConfigEntry
 from .binary_sensor import ALARM_DESCRIPTIONS
 from .coordinator import UnifiAirQualityCoordinator
-from .entity import UnifiAirQualityEntity
+from .entity import UnifiAirQualityEntity, async_setup_dynamic_entities
 from .models import ProtectAlarmEvent
 
 ALARM_EVENT_TYPES = tuple(
@@ -28,9 +28,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up one event stream entity for every discovered device."""
     coordinator = entry.runtime_data.coordinator
-    async_add_entities(
-        UnifiAirQualityAlarmEvent(coordinator, device.id)
-        for device in coordinator.data.devices
+    async_setup_dynamic_entities(
+        entry,
+        async_add_entities,
+        lambda device_id: (UnifiAirQualityAlarmEvent(coordinator, device_id),),
     )
 
 
@@ -41,6 +42,8 @@ class UnifiAirQualityAlarmEvent(UnifiAirQualityEntity, EventEntity):
     _attr_event_types = ALARM_EVENT_TYPES
 
     def __init__(self, coordinator: UnifiAirQualityCoordinator, device_id: str) -> None:
+        """Initialize this component with its entry-scoped dependencies."""
+        # Keep all mutable state scoped to this instance and its config entry.
         super().__init__(coordinator, device_id, "air_quality_alarm_event")
 
     async def async_added_to_hass(self) -> None:
@@ -52,6 +55,8 @@ class UnifiAirQualityAlarmEvent(UnifiAirQualityEntity, EventEntity):
 
     @callback
     def _handle_alarm_event(self, event: ProtectAlarmEvent) -> None:
+        """Expose supported normalized alarm transitions for this device."""
+        # Filter by device and public event type before triggering HA automations.
         if event.device_id != self._device_id:
             return
         event_type = f"{event.metric}_alarm_{event.transition}"

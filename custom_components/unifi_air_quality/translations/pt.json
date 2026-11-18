@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "Apenas o nome do anfitrião ou endereço IP, sem https://.",
-          "verify_ssl": "Ative apenas se o Home Assistant confiar no certificado da consola."
+          "verify_ssl": "Verify the console identity (recommended). Disabling verification allows interception of credentials and readings."
         }
       },
       "reauth_confirm": {
@@ -29,6 +29,7 @@
       "cannot_connect": "Não foi possível ligar ao UniFi Protect.",
       "invalid_auth": "O nome de utilizador ou a palavra-passe são inválidos.",
       "invalid_response": "O Protect devolveu uma resposta não suportada.",
+      "tls_error": "The console TLS certificate is not trusted. Use a certificate issued by a CA trusted by Home Assistant and a matching hostname.",
       "unknown": "Erro inesperado. Consulte os registos do Home Assistant."
     },
     "abort": {

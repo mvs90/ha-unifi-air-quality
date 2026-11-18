@@ -13,7 +13,7 @@ from homeassistant.const import (
     CONF_USERNAME,
     Platform,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
@@ -72,17 +72,25 @@ async def _async_setup_entry(
     entry.runtime_data = UnifiAirQualityRuntimeData(client, coordinator)
 
     registry = dr.async_get(hass)
-    for device in coordinator.data.devices:
-        registry.async_get_or_create(
-            config_entry_id=entry.entry_id,
-            identifiers={(DOMAIN, device.id)},
-            manufacturer=MANUFACTURER,
-            model=device.model,
-            name=device.name,
-            sw_version=device.firmware_version,
-        )
+
+    @callback
+    def register_devices() -> None:
+        """Refresh device metadata without deleting entries for removed sensors."""
+        for device in coordinator.data.devices:
+            registry.async_get_or_create(
+                config_entry_id=entry.entry_id,
+                identifiers={(DOMAIN, device.id)},
+                manufacturer=MANUFACTURER,
+                model=device.model,
+                name=device.name,
+                sw_version=device.firmware_version,
+            )
+
+    entry.async_on_unload(coordinator.async_add_listener(register_devices))
+    register_devices()
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    coordinator.async_start_health_monitor()
     client.start_websocket()
     return True
 

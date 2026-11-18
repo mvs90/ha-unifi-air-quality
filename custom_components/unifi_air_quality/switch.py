@@ -12,7 +12,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import UnifiAirQualityConfigEntry
 from .coordinator import UnifiAirQualityCoordinator
-from .entity import UnifiAirQualityEntity
+from .entity import UnifiAirQualityEntity, async_setup_dynamic_entities
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -89,18 +89,16 @@ async def async_setup_entry(
 ) -> None:
     """Set up writable switches."""
     coordinator = entry.runtime_data.coordinator
-    async_add_entities(
-        [
+    async_setup_dynamic_entities(
+        entry,
+        async_add_entities,
+        lambda device_id: [
             *(
-                AirQualitySwitch(coordinator, device.id, description)
-                for device in coordinator.data.devices
+                AirQualitySwitch(coordinator, device_id, description)
                 for description in SWITCH_DESCRIPTIONS
             ),
-            *(
-                RingLedSwitch(coordinator, device.id)
-                for device in coordinator.data.devices
-            ),
-        ]
+            RingLedSwitch(coordinator, device_id),
+        ],
     )
 
 
@@ -115,11 +113,15 @@ class AirQualitySwitch(UnifiAirQualityEntity, SwitchEntity):
         device_id: str,
         description: AirQualitySwitchDescription,
     ) -> None:
+        """Initialize this component with its entry-scoped dependencies."""
+        # Keep all mutable state scoped to this instance and its config entry.
         super().__init__(coordinator, device_id, description.key)
         self.entity_description = description
 
     @property
     def is_on(self) -> bool | None:
+        """Return the confirmed boolean/alarm state, or unknown if unavailable."""
+        # Use current confirmed state so rejected settings never appear successful.
         value = self.raw_value(self.entity_description.path)
         if not isinstance(value, bool):
             return None
@@ -131,6 +133,8 @@ class AirQualitySwitch(UnifiAirQualityEntity, SwitchEntity):
         return value and (low is not None or high is not None)
 
     async def async_turn_on(self, **kwargs: object) -> None:
+        """Enable this setting using the last confirmed device configuration."""
+        # Only submit a Protect write after validating the control's prerequisites.
         if self.entity_description.is_alarm:
             settings_path = self.entity_description.path[:-1]
             low = self.raw_value((*settings_path, "lowThreshold"))
@@ -142,13 +146,14 @@ class AirQualitySwitch(UnifiAirQualityEntity, SwitchEntity):
         await self.async_write_value(self.entity_description.path, True)
 
     async def async_turn_off(self, **kwargs: object) -> None:
+        """Disable this setting while retaining the required device semantics."""
+        # Preserve firmware-specific thresholds or remembered brightness where required.
         if self.entity_description.is_alarm:
             settings_path = self.entity_description.path[:-1]
             if settings_path[-1] == "vapeSettings":
                 await self.async_write_value(self.entity_description.path, False)
                 return
-            await self.coordinator.client.async_update_device(
-                self._device_id,
+            await self.async_write_update(
                 {
                     "airQualitySettings": {
                         settings_path[-1]: {
@@ -171,6 +176,8 @@ class RingLedSwitch(UnifiAirQualityEntity, SwitchEntity):
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: UnifiAirQualityCoordinator, device_id: str) -> None:
+        """Initialize this component with its entry-scoped dependencies."""
+        # Keep all mutable state scoped to this instance and its config entry.
         super().__init__(coordinator, device_id, "ring_led")
         self._brightness_option_key = f"ring_led_previous_brightness_{device_id}"
         brightness = self.raw_value(("airQualitySettings", "ringLedBrightness"))
@@ -188,6 +195,8 @@ class RingLedSwitch(UnifiAirQualityEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool | None:
+        """Return the confirmed boolean/alarm state, or unknown if unavailable."""
+        # Use current confirmed state so rejected settings never appear successful.
         brightness = self.raw_value(("airQualitySettings", "ringLedBrightness"))
         if isinstance(brightness, bool) or not isinstance(brightness, (int, float)):
             return None
@@ -197,11 +206,15 @@ class RingLedSwitch(UnifiAirQualityEntity, SwitchEntity):
         return False
 
     async def async_turn_on(self, **kwargs: object) -> None:
+        """Enable this setting using the last confirmed device configuration."""
+        # Only submit a Protect write after validating the control's prerequisites.
         await self.async_write_value(
             ("airQualitySettings", "ringLedBrightness"), self._last_brightness
         )
 
     async def async_turn_off(self, **kwargs: object) -> None:
+        """Disable this setting while retaining the required device semantics."""
+        # Preserve firmware-specific thresholds or remembered brightness where required.
         brightness = self.raw_value(("airQualitySettings", "ringLedBrightness"))
         if isinstance(brightness, (int, float)) and not isinstance(brightness, bool):
             if brightness > 0:

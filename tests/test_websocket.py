@@ -15,6 +15,7 @@ HEADER = struct.Struct("!bbbbi")
 
 
 def _frame(data: dict, *, compressed: bool = False) -> bytes:
+    """Provide frame for the isolated regression scenario."""
     payload = json.dumps(data).encode()
     if compressed:
         payload = zlib.compress(payload)
@@ -22,6 +23,7 @@ def _frame(data: dict, *, compressed: bool = False) -> bytes:
 
 
 def test_decode_message() -> None:
+    """Verify decode message."""
     action = {
         "action": "update",
         "modelKey": "sensor",
@@ -36,11 +38,13 @@ def test_decode_message() -> None:
 
 
 def test_decode_message_rejects_truncated_frame() -> None:
+    """Verify decode message rejects truncated frame."""
     with pytest.raises(WebsocketDecodeError):
         decode_message(b"invalid")
 
 
 def test_decode_message_rejects_trailing_data() -> None:
+    """Verify decode message rejects trailing data."""
     with pytest.raises(WebsocketDecodeError):
         decode_message(_frame({}) + _frame({}) + b"extra")
 
@@ -56,5 +60,6 @@ def test_decode_message_rejects_trailing_data() -> None:
     ],
 )
 def test_decode_message_rejects_invalid_action_frame(payload: bytes) -> None:
+    """Verify decode message rejects invalid action frame."""
     with pytest.raises(WebsocketDecodeError):
         decode_message(payload)

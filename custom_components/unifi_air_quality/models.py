@@ -37,6 +37,7 @@ class AirQualityDevice:
     is_connected: bool
     raw: dict[str, Any]
     active_alarms: tuple[ProtectAlarm, ...] = ()
+    uncertain_alarm_metrics: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

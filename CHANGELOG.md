@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — fork hardening
+
+- Reconcile recovered alarm state; isolate forbidden writes from read sessions.
+- Verify TLS by default for new entries and recover unexpected stream failures.
+- Enforce freshness, schema validation and bounded WebSocket decoding.
+- Verify setting writes against server state; preserve newer concurrent updates.
+- Discover devices dynamically across all platforms without ID/name churn.
+- Minimize diagnostics with allowlists and random per-export aliases.
+- Add security/regression coverage and function-level documentation.
+
+
 ## 0.5.4
 
 - Isolate authentication cookies in a dedicated HTTP session for each config

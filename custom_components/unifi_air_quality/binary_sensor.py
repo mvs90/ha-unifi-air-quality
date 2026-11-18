@@ -15,7 +15,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import UnifiAirQualityConfigEntry
 from .coordinator import UnifiAirQualityCoordinator
-from .entity import UnifiAirQualityEntity
+from .entity import UnifiAirQualityEntity, async_setup_dynamic_entities
 
 _NON_ALARM_STATUSES = frozenset({"good", "neutral", "normal", "safe"})
 
@@ -59,10 +59,13 @@ async def async_setup_entry(
 ) -> None:
     """Set up alarm state entities for every discovered device."""
     coordinator = entry.runtime_data.coordinator
-    async_add_entities(
-        UnifiAirQualityAlarmBinarySensor(coordinator, device.id, description)
-        for device in coordinator.data.devices
-        for description in ALARM_DESCRIPTIONS
+    async_setup_dynamic_entities(
+        entry,
+        async_add_entities,
+        lambda device_id: (
+            UnifiAirQualityAlarmBinarySensor(coordinator, device_id, description)
+            for description in ALARM_DESCRIPTIONS
+        ),
     )
 
 
@@ -77,11 +80,22 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
         device_id: str,
         description: AlarmBinarySensorDescription,
     ) -> None:
+        """Initialize this component with its entry-scoped dependencies."""
+        # Keep all mutable state scoped to this instance and its config entry.
         super().__init__(coordinator, device_id, description.key)
         self.entity_description = description
 
     @property
+    def available(self) -> bool:
+        """Do not present an old alarm as current because another metric updates."""
+        return super().available and self.coordinator.client.is_alarm_fresh(
+            self._device_id, self.entity_description.payload_key
+        )
+
+    @property
     def is_on(self) -> bool | None:
+        """Return the confirmed boolean/alarm state, or unknown if unavailable."""
+        # Use current confirmed state so rejected settings never appear successful.
         device = self.device
         if device is None:
             return None
@@ -90,6 +104,8 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
             for alarm in device.active_alarms
         ):
             return True
+        if self.entity_description.payload_key in device.uncertain_alarm_metrics:
+            return None
         status = self._measurement_status
         if status is None:
             return False
@@ -97,6 +113,8 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Expose the current Protect classification and optional alarm value."""
+        # Return only attributes relevant to the latest confirmed measurement.
         device = self.device
         if device is not None:
             for alarm in device.active_alarms:
@@ -110,6 +128,8 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
 
     @property
     def _measurement_status(self) -> str | None:
+        """Read a nonempty status from the current metric payload."""
+        # Missing or scalar measurements do not provide a confirmed alarm status.
         device = self.device
         air_quality = device.raw.get("airQuality") if device else None
         if not isinstance(air_quality, dict):

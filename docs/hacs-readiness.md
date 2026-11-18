@@ -1,3 +1,10 @@
+# Fork validation and historical upstream report
+
+The sections below record upstream results; they are not new hardware tests
+for this fork. Current fork validation is defined by its CI workflows and
+README recovery/compatibility policy. Install this fork as a HACS custom
+repository. No catalog approval for this fork is claimed.
+
 # HACS default-catalog readiness
 
 Reviewed on 2026-10-28 for release `0.5.3`.

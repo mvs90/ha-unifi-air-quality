@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "https:// を含めず、ホスト名または IP アドレスのみを入力してください。",
-          "verify_ssl": "Home Assistant がコンソールの証明書を信頼している場合のみ有効にしてください。"
+          "verify_ssl": "Verify the console identity (recommended). Disabling verification allows interception of credentials and readings."
         }
       },
       "reauth_confirm": {
@@ -29,6 +29,7 @@
       "cannot_connect": "UniFi Protect に接続できませんでした。",
       "invalid_auth": "ユーザー名またはパスワードが無効です。",
       "invalid_response": "Protect が未対応の応答を返しました。",
+      "tls_error": "The console TLS certificate is not trusted. Use a certificate issued by a CA trusted by Home Assistant and a matching hostname.",
       "unknown": "予期しないエラーが発生しました。Home Assistant のログを確認してください。"
     },
     "abort": {

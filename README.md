@@ -21,7 +21,7 @@ Version `0.5.4` can:
 - configure a local Protect console through the Home Assistant UI;
 - authenticate with a dedicated local Protect user;
 - find adopted UP-AirQuality devices in the private bootstrap response;
-- follow private WebSocket updates with a 15-minute bootstrap safety refresh;
+- follow private WebSocket updates with a 60-second bootstrap safety refresh;
 - register each sensor in the Home Assistant device registry;
 - expose twelve measurement entities with native Home Assistant device and
   state classes; and
@@ -29,7 +29,7 @@ Version `0.5.4` can:
   alarms directly from Home Assistant;
 - expose current alarm states as binary sensors and WebSocket alarm transitions
   as an event entity for automations; and
-- export field-preserving, anonymized raw sensor data through Home Assistant
+- export allowlisted current sensor data with per-export aliases through Home Assistant
   diagnostics.
 
 The entities update from Protect WebSocket pushes and include Protect's
@@ -115,18 +115,14 @@ documented units nor supported ranges for them.
 
 ## Installation
 
-### HACS (recommended)
+### HACS custom repository
 
-1. Open HACS and search for **UniFi Protect Air Quality**.
-2. Install **UniFi Protect Air Quality** and restart Home Assistant.
-3. Go to **Settings → Devices & services → Add integration** and search for
-   **UniFi Protect Air Quality**.
-
-### Custom repository fallback
-
-If the integration does not appear in HACS search yet, add
-`https://github.com/mvs90/ha-unifi-air-quality` as a custom repository of
-type **Integration** in HACS. Then follow steps 2 and 3 above.
+This is the maintained `Daniel-Dietz/ha-unifi-air-quality` fork. Add
+`https://github.com/Daniel-Dietz/ha-unifi-air-quality` as a custom repository
+of type **Integration** in HACS, install it, and restart Home Assistant.
+Then open **Settings → Devices & services → Add integration** and select
+**UniFi Protect Air Quality**. Preserve your existing integration entry when
+switching to this fork; entity IDs and saved TLS choices remain unchanged.
 
 ### Manual installation
 
@@ -160,20 +156,85 @@ session and cookie jar, never Home Assistant's shared session. After rejected
 credentials, automatic password logins stop until reauthentication succeeds;
 the WebSocket also requests reauthentication immediately.
 
-Most consoles use a self-signed certificate. Leave certificate verification
-off for those systems; enable it when the console has a certificate trusted by
-the Home Assistant host.
+New setups verify HTTPS and WSS certificates by default. Use a console
+certificate issued by a CA trusted by Home Assistant and a hostname matching
+its SAN. For a private CA, install/trust that CA in the Home Assistant runtime
+using your deployment's supported CA mechanism, then verify access before setup.
+Do not merely trust a certificate in a browser: HA's runtime must trust it.
+Existing entries retain their explicit TLS choice. Turning verification off is
+an explicit exception: it allows network attackers to intercept credentials,
+session cookies and readings. Prefer a trusted local-CA certificate.
+
+Reading and monitoring require Protect read permission. Changing LEDs, night
+mode or thresholds additionally requires sensor-settings write permission.
+A forbidden PATCH (403) returns an actionable control error and preserves the
+read session; only an expired PATCH (401) gets one bounded session renewal.
+Settings are read back through bootstrap after each successful PATCH. If Protect
+normalizes or delays a setting, HA displays confirmed state and reports that the
+request is not yet confirmed. Refresh/wait before retrying; no optimistic value
+is published. Writes are serialized, and an in-flight older HTTP response cannot
+overwrite a newer push or completed refresh.
 
 ## Diagnostics
 
 After setup, open the integration's menu and select **Download diagnostics**.
-The export removes credentials, network locations, names, MAC addresses,
-serials, and stable identifiers. String values that are not explicitly known
-to be harmless are also redacted, while field names, numbers, booleans, and
-nested structure remain available for protocol development.
+The export includes only current allowlisted measurements, selected settings,
+connection/protocol health and numeric Protect/device firmware versions. It omits
+hostnames, credentials, cookies, tokens, MACs, serials, names, history and unknown
+API fields, including newly introduced nested fields. Device IDs receive random
+aliases scoped to one export: correlation within that file is possible, while
+there is no stable cross-export hash/fingerprint. This is data minimization,
+not a guarantee of irreversible anonymity.
 
-Review the JSON yourself before sharing it. Open a GitHub issue and attach only
-the reviewed diagnostic file.
+**Measurements, settings, firmware and device counts can still reveal household
+or operational information. Review exports before sharing; do not post them
+publicly without review.** Report issues to this fork's issue tracker.
+
+## Recovery, availability and private-API compatibility
+
+Full refreshes are scheduled at least every 60 seconds (with a five-second
+health-timer granularity), independently of push traffic; in-flight refreshes
+are not duplicated. A reading or confirmed alarm status is fresh for **120 seconds** after a verified
+bootstrap or numeric update for that metric. An update to another metric,
+an empty heartbeat, or an unknown field cannot refresh an old reading. HA
+reevaluates availability every five seconds, so stale readings become unavailable
+within **125 seconds**. A connected WebSocket alone is insufficient evidence of
+fresh measurements. Device-offline flags still take effect immediately.
+Brief transport outages preserve only still-fresh data; successful refreshes
+or numeric/status pushes restore it automatically. Protocol/authentication failures
+make the affected integration unavailable immediately.
+
+Reconnects refresh bootstrap before following its cursor. Current measurement
+statuses replace transient alarm caches, clearing missed end events. An orphaned
+alarm without a confirming status expires to **unknown**, without fabricating an
+`ended` event. Existing public alarm event types and unique IDs are retained.
+Multiple event IDs and sensor/event sources remain aggregated during streaming.
+Repeated reconnect failures use 1, 2, 4, 8, 16, 30 second delays (30-second cap);
+a sustained connection resets this sequence. Logs contain error classes, not raw
+frames or exception payloads. Unload cancels the task and releases listeners.
+
+New devices are discovered on all seven entity platforms during push/refresh
+without reload. Removed devices' entities remain unavailable and retain registry
+settings/history; reappearance reuses the same IDs and user names.
+
+The undocumented bootstrap, sensor PATCH and two-frame WebSocket APIs may change
+with any Protect/firmware upgrade. Known required schema/status changes produce
+an actionable HA update error and sanitized diagnostics instead of false alerts.
+Unknown optional fields are tolerated. Frames are limited to **1 MiB wire data
+per frame**, **2 MiB decompressed per frame**, and two frames per message; bounded
+zlib expansion rejects bombs, truncation and concatenated streams. Incompatible
+frames trigger a controlled reconnect/resync.
+
+The regression fixtures cover the existing scalar Protect variant (fixture
+labels Protect **6.2.0**, firmware **1.0.0**) and the structured NOx/status variant
+whose versions were not recorded. These are **synthetic protocol fixtures**, not
+claims that hardware/firmware releases have been certified. This change has not
+been tested against a live Protect console. No other version support is claimed.
+Before a firmware upgrade, back up HA/configuration, record versions, test a
+reviewed bootstrap/diagnostic export, compare live readings with Protect, verify
+reconnect/offline behavior and a permitted control readback. Check alarms in a
+safe test environment; do not induce live safety alarms. Keep a rollback path
+and report changed schemas with reviewed diagnostic data.
 
 ## Development
 
@@ -229,14 +290,10 @@ the repository in HACS and restart Home Assistant.
 - The private API can change with any Protect update.
 - Username/password authentication is required until the public API exposes
   continuous readings and device-change notifications.
-- Newly adopted or removed sensors require reloading the integration before
-  their entities are added or removed.
 - Automatic console discovery is not implemented.
-- The integration is included in HACS's default catalog. It ships its
-  own `brand/` images and runs HACS validation without ignored checks; a
-  separate entry in the central Home Assistant brands repository is not
-  required. See [HACS submission readiness](docs/hacs-readiness.md) for the
-  historical submission checks.
+- This fork uses HACS custom-repository installation and bundled `brand/` images.
+  Historical upstream submission results are recorded separately in
+  [HACS submission readiness](docs/hacs-readiness.md).
 
 ## Acknowledgements
 

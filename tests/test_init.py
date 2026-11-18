@@ -16,6 +16,7 @@ from .ha_test_helpers import MockConfigEntry
 
 
 async def test_setup_and_unload_entry(hass, device_registry) -> None:
+    """Verify setup and unload entry."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -81,6 +82,7 @@ async def test_setup_and_unload_entry(hass, device_registry) -> None:
 
 
 async def test_unload_stops_when_platform_unload_fails(hass) -> None:
+    """Verify unload stops when platform unload fails."""
     entry = MockConfigEntry(domain=DOMAIN, data={})
     client = AsyncMock()
     entry.runtime_data = type("RuntimeData", (), {"client": client})()
@@ -97,6 +99,7 @@ async def test_unload_stops_when_platform_unload_fails(hass) -> None:
 
 @pytest.mark.parametrize("failure", [RuntimeError(), asyncio.CancelledError()])
 async def test_setup_failure_closes_dedicated_session(hass, failure):
+    """Verify setup failure closes dedicated session."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -127,6 +130,7 @@ async def test_setup_failure_closes_dedicated_session(hass, failure):
 
 @pytest.mark.parametrize("failure", [RuntimeError(), asyncio.CancelledError()])
 async def test_refresh_failure_closes_session_before_setup_retry(hass, failure):
+    """Verify refresh failure closes session before setup retry."""
     from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
     from .test_config_flow import USER_INPUT

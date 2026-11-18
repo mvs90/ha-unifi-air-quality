@@ -23,7 +23,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import UnifiAirQualityConfigEntry
 from .const import DOMAIN
 from .coordinator import UnifiAirQualityCoordinator
-from .entity import UnifiAirQualityEntity
+from .entity import UnifiAirQualityEntity, async_setup_dynamic_entities
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -148,10 +148,13 @@ async def async_setup_entry(
             obsolete_suffixes
         ):
             registry.async_remove(registry_entry.entity_id)
-    async_add_entities(
-        AirQualityNumber(coordinator, device.id, description)
-        for device in coordinator.data.devices
-        for description in NUMBER_DESCRIPTIONS
+    async_setup_dynamic_entities(
+        entry,
+        async_add_entities,
+        lambda device_id: (
+            AirQualityNumber(coordinator, device_id, description)
+            for description in NUMBER_DESCRIPTIONS
+        ),
     )
 
 
@@ -166,11 +169,15 @@ class AirQualityNumber(UnifiAirQualityEntity, NumberEntity):
         device_id: str,
         description: AirQualityNumberDescription,
     ) -> None:
+        """Initialize this component with its entry-scoped dependencies."""
+        # Keep all mutable state scoped to this instance and its config entry.
         super().__init__(coordinator, device_id, description.key)
         self.entity_description = description
 
     @property
     def native_value(self) -> float | None:
+        """Return a valid native measurement/setting value or unknown."""
+        # Check wire types before converting to the Home Assistant representation.
         value = self.raw_value(self.entity_description.path)
         if value is None and self.entity_description.activates_alarm:
             return 0.0
@@ -179,10 +186,11 @@ class AirQualityNumber(UnifiAirQualityEntity, NumberEntity):
         return float(value)
 
     async def async_set_native_value(self, value: float) -> None:
+        """Write a numeric setting with its metric-specific alarm semantics."""
+        # Thresholds activate alarms; vape firmware requires both sensitivity fields.
         normalized: int | float = int(value) if value.is_integer() else value
         if self.entity_description.key == "vape_sensitivity":
-            await self.coordinator.client.async_update_device(
-                self._device_id,
+            await self.async_write_update(
                 {
                     "airQualitySettings": {
                         "vapeSensitivitySettings": {"sensitivity": normalized},
@@ -194,8 +202,7 @@ class AirQualityNumber(UnifiAirQualityEntity, NumberEntity):
         if self.entity_description.activates_alarm:
             settings_key = self.entity_description.path[-2]
             threshold_key = self.entity_description.path[-1]
-            await self.coordinator.client.async_update_device(
-                self._device_id,
+            await self.async_write_update(
                 {
                     "airQualitySettings": {
                         settings_key: {

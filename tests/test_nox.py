@@ -26,6 +26,7 @@ from .ha_test_helpers import MockConfigEntry
 
 
 def _coordinator(load_fixture):
+    """Provide coordinator for the isolated regression scenario."""
     coordinator = MagicMock()
     coordinator.data = snapshot_from_bootstrap(
         json.loads(load_fixture("bootstrap_nox.json"))
@@ -36,6 +37,7 @@ def _coordinator(load_fixture):
 
 
 def test_nox_is_an_unscaled_index_with_status(load_fixture):
+    """Verify nox is an unscaled index with status."""
     coordinator = _coordinator(load_fixture)
     description = next(item for item in SENSOR_DESCRIPTIONS if item.key == "nox_index")
     entity = UnifiAirQualitySensor(coordinator, "anonymous-air-quality-id", description)
@@ -48,6 +50,7 @@ def test_nox_is_an_unscaled_index_with_status(load_fixture):
 
 @pytest.mark.parametrize("measurement", [None, {}, {"value": None}, {"value": True}])
 def test_missing_or_invalid_nox_is_not_reported_as_zero(load_fixture, measurement):
+    """Verify missing or invalid nox is not reported as zero."""
     coordinator = _coordinator(load_fixture)
     coordinator.data.devices[0].raw["airQuality"]["nox"] = measurement
     description = next(item for item in SENSOR_DESCRIPTIONS if item.key == "nox_index")
@@ -56,6 +59,7 @@ def test_missing_or_invalid_nox_is_not_reported_as_zero(load_fixture, measuremen
 
 
 async def test_nox_thresholds_and_switch_use_correct_setting_path(load_fixture):
+    """Verify nox thresholds and switch use correct setting path."""
     coordinator = _coordinator(load_fixture)
     for bound, value in (("low", 10.0), ("high", 120.0)):
         description = next(
@@ -94,6 +98,7 @@ async def test_nox_thresholds_and_switch_use_correct_setting_path(load_fixture):
 
 
 async def test_full_ha_setup_exposes_nox_entities_and_event_types(hass, load_fixture):
+    """Verify full ha setup exposes nox entities and event types."""
     snapshot = snapshot_from_bootstrap(json.loads(load_fixture("bootstrap_nox.json")))
     entry = MockConfigEntry(
         domain=DOMAIN,

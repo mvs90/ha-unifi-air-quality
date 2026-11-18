@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "Endast värdnamn eller IP-adress, utan https://.",
-          "verify_ssl": "Aktivera endast om Home Assistant litar på konsolens certifikat."
+          "verify_ssl": "Verify the console identity (recommended). Disabling verification allows interception of credentials and readings."
         }
       },
       "reauth_confirm": {
@@ -29,6 +29,7 @@
       "cannot_connect": "Det gick inte att ansluta till UniFi Protect.",
       "invalid_auth": "Användarnamnet eller lösenordet är ogiltigt.",
       "invalid_response": "Protect returnerade ett svar som inte stöds.",
+      "tls_error": "The console TLS certificate is not trusted. Use a certificate issued by a CA trusted by Home Assistant and a matching hostname.",
       "unknown": "Oväntat fel. Kontrollera Home Assistants loggar."
     },
     "abort": {

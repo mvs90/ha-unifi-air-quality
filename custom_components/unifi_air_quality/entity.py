@@ -2,14 +2,56 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable, Iterable
+from typing import TYPE_CHECKING, Any
 
+from homeassistant.core import callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .api import ProtectApiError
 from .const import DOMAIN, MANUFACTURER
 from .coordinator import UnifiAirQualityCoordinator
 from .models import AirQualityDevice
+
+if TYPE_CHECKING:
+    from . import UnifiAirQualityConfigEntry
+
+
+@callback
+def async_setup_dynamic_entities(
+    entry: UnifiAirQualityConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+    factory: Callable[[str], Iterable[Entity]],
+) -> None:
+    """Reconcile each platform using its existing coordinator subscription.
+
+    Keep entities on removal so registry names, IDs and history survive re-pairing.
+    The local set only records entities submitted by this platform during setup.
+    """
+    coordinator = entry.runtime_data.coordinator
+    known: set[str] = set()
+
+    @callback
+    def discover() -> None:
+        """Submit only newly observed devices, including after an empty bootstrap."""
+        new_ids = {device.id for device in coordinator.data.devices} - known
+        # Reserve IDs before adding: entity callbacks may trigger another update.
+        known.update(new_ids)
+        if new_ids:
+            async_add_entities(
+                [
+                    entity
+                    for device_id in sorted(new_ids)
+                    for entity in factory(device_id)
+                ]
+            )
+
+    entry.async_on_unload(coordinator.async_add_listener(discover))
+    discover()
 
 
 def nested_value(data: dict[str, Any], path: tuple[str, ...]) -> Any:
@@ -41,6 +83,8 @@ class UnifiAirQualityEntity(CoordinatorEntity[UnifiAirQualityCoordinator]):
         device_id: str,
         entity_key: str,
     ) -> None:
+        """Initialize this component with its entry-scoped dependencies."""
+        # Keep all mutable state scoped to this instance and its config entry.
         super().__init__(coordinator)
         self._device_id = device_id
         self._attr_unique_id = f"{device_id}_{entity_key}"
@@ -68,8 +112,15 @@ class UnifiAirQualityEntity(CoordinatorEntity[UnifiAirQualityCoordinator]):
 
     @property
     def available(self) -> bool:
+        """Require coordinator health, device connectivity and verified freshness."""
+        # A cached isConnected flag alone cannot prove readings are still current.
         device = self.device
-        return super().available and device is not None and device.is_connected
+        return (
+            super().available
+            and device is not None
+            and device.is_connected
+            and self.coordinator.client.is_device_fresh(self._device_id)
+        )
 
     def raw_value(self, path: tuple[str, ...]) -> Any:
         """Read a raw setting from the current device."""
@@ -78,6 +129,11 @@ class UnifiAirQualityEntity(CoordinatorEntity[UnifiAirQualityCoordinator]):
 
     async def async_write_value(self, path: tuple[str, ...], value: Any) -> None:
         """Write one setting through the private API adapter."""
-        await self.coordinator.client.async_update_device(
-            self._device_id, nested_update(path, value)
-        )
+        await self.async_write_update(nested_update(path, value))
+
+    async def async_write_update(self, update: dict[str, Any]) -> None:
+        """Expose actionable, sanitized control errors to Home Assistant."""
+        try:
+            await self.coordinator.client.async_update_device(self._device_id, update)
+        except ProtectApiError as err:
+            raise HomeAssistantError(str(err)) from err

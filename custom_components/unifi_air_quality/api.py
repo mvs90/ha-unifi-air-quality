@@ -874,12 +874,20 @@ class PrivateProtectClient:
             # The new source ended, not necessarily a source retired at resync.
             # No all-clear is verified while any older end is still missing.
             self._uncertain_alarm_metrics.add(key)
-            if not any(
-                self._alarm_event_devices.get(other) == device_id
-                and active.metric == metric
-                for other, active in self._active_alarm_events.items()
-            ):
+            remaining = next(
+                (
+                    active
+                    for other, active in self._active_alarm_events.items()
+                    if self._alarm_event_devices.get(other) == device_id
+                    and active.metric == metric
+                ),
+                None,
+            )
+            if remaining is None:
                 self._alarm_states.pop(key, None)
+            else:
+                # Keep current attributes from a surviving source, not the ender.
+                self._alarm_states[key] = remaining
             self._alarm_verified_at[key] = now
             self._rebuild_snapshot(cursor)
             return

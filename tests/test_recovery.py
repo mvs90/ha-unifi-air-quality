@@ -151,6 +151,46 @@ async def test_retired_alarm_prevents_false_clear_after_new_event(
     assert callback.call_args.args[0].transition == "ended"
 
 
+async def test_retired_alarm_preserves_newest_live_source_attributes(load_fixture):
+    """A surviving live source supplies status after another live source ends."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    await client.async_get_snapshot()
+    callback = MagicMock()
+    client.subscribe_alarm_events(callback)
+
+    def send(event_id, operation, status):
+        """Send an event start or a partial end with a source identifier."""
+        client._process_websocket_payload(
+            _frame({"modelKey": "event", "id": event_id, "action": operation})
+            + _frame(
+                {"end": 123}
+                if operation == "update"
+                else {
+                    "type": "sensorExtremeValues",
+                    "device": "anonymous-air-quality-id",
+                    "metadata": {"sensorType": "co2", "status": status},
+                }
+            )
+        )
+
+    send("old", "add", "high")
+    await client.async_get_snapshot()
+    send("high", "add", "high")
+    send("critical", "add", "critical")
+    before = callback.call_count
+    send("high", "update", None)
+    device = client.snapshot.devices[0]
+    assert device.active_alarms[0].status == "critical"
+    assert callback.call_count == before
+    send("critical", "update", None)
+    assert client.snapshot.devices[0].uncertain_alarm_metrics == ("co2",)
+    assert callback.call_count == before
+    send("old", "update", None)
+    assert callback.call_count == before + 1
+    assert callback.call_args.args[0].transition == "ended"
+
+
 async def test_pruned_old_alarm_never_fabricates_clear(load_fixture):
     """Pruning an unresolved event ID cannot make a newer end definitive."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))

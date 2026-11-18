@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "Kun værtsnavn eller IP-adresse, uden https://.",
-          "verify_ssl": "Verify the console identity (recommended). Disabling verification allows interception of credentials and readings."
+          "verify_ssl": "Bekræft konsollens identitet (anbefales). Hvis bekræftelsen slås fra, kan loginoplysninger og målinger opsnappes."
         }
       },
       "reauth_confirm": {
@@ -23,19 +23,34 @@
         "data": {
           "password": "Adgangskode"
         }
+      },
+      "reconfigure": {
+        "title": "Opdater forbindelsen til UniFi Protect",
+        "description": "Kontrollér den nye adresse eller certifikatet for den samme konsol. Eksisterende enheder og navne bevares.",
+        "data": {
+          "host": "Vært",
+          "port": "Port",
+          "verify_ssl": "Bekræft TLS-certifikat"
+        },
+        "data_description": {
+          "host": "Kun værtsnavn eller IP-adresse, uden https://.",
+          "verify_ssl": "Bekræft konsollens identitet (anbefales). Hvis bekræftelsen slås fra, kan loginoplysninger og målinger opsnappes."
+        }
       }
     },
     "error": {
       "cannot_connect": "Kunne ikke oprette forbindelse til UniFi Protect.",
       "invalid_auth": "Brugernavnet eller adgangskoden er ugyldig.",
       "invalid_response": "Protect returnerede et svar, der ikke understøttes.",
-      "tls_error": "The console TLS certificate is not trusted. Use a certificate issued by a CA trusted by Home Assistant and a matching hostname.",
-      "unknown": "Uventet fejl. Kontrollér logfilerne i Home Assistant."
+      "tls_error": "Konsollens TLS-certifikat er ikke betroet. Brug et certifikat udstedt af en certifikatmyndighed, som Home Assistant har tillid til, og et værtsnavn, der matcher certifikatet.",
+      "unknown": "Uventet fejl. Kontrollér logfilerne i Home Assistant.",
+      "different_console": "Den nye adresse tilhører en anden Protect-konsol. Ingen ændringer blev gemt."
     },
     "abort": {
       "already_configured": "Denne Protect-konsol er allerede konfigureret.",
       "reauth_successful": "Godkendelsen blev fornyet.",
-      "unique_id_mismatch": "Loginoplysningerne tilhører en anden Protect-konsol."
+      "unique_id_mismatch": "Loginoplysningerne tilhører en anden Protect-konsol.",
+      "reconfigure_successful": "Den eksisterende forbindelse til Protect er blevet opdateret."
     }
   },
   "entity": {

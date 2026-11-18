@@ -18,6 +18,7 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -145,10 +146,27 @@ async def async_setup_entry(
     """Set up writable numeric settings."""
     coordinator = entry.runtime_data.coordinator
     registry = er.async_get(hass)
-    obsolete_suffixes = ("_reading_interval", "_vape_low_threshold")
-    for registry_entry in list(registry.entities.values()):
-        if registry_entry.platform == DOMAIN and registry_entry.unique_id.endswith(
-            obsolete_suffixes
+    # Include previously paired devices retained through an outage, but never
+    # infer an identity from a suffix belonging to an unrelated entity or entry.
+    device_ids = {device.id for device in coordinator.data.devices}
+    device_ids.update(
+        identifier
+        for device in dr.async_entries_for_config_entry(
+            dr.async_get(hass), entry.entry_id
+        )
+        for domain, identifier in device.identifiers
+        if domain == DOMAIN
+    )
+    obsolete_ids = {
+        f"{device_id}_{key}"
+        for device_id in device_ids
+        for key in ("reading_interval", "vape_low_threshold")
+    }
+    for registry_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if (
+            registry_entry.domain == "number"
+            and registry_entry.platform == DOMAIN
+            and registry_entry.unique_id in obsolete_ids
         ):
             registry.async_remove(registry_entry.entity_id)
     async_setup_dynamic_entities(

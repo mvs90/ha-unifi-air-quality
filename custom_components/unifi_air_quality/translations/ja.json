@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "https:// を含めず、ホスト名または IP アドレスのみを入力してください。",
-          "verify_ssl": "Verify the console identity (recommended). Disabling verification allows interception of credentials and readings."
+          "verify_ssl": "コンソールの識別情報を検証します（推奨）。検証を無効にすると、認証情報や測定値が傍受されるおそれがあります。"
         }
       },
       "reauth_confirm": {
@@ -23,19 +23,34 @@
         "data": {
           "password": "パスワード"
         }
+      },
+      "reconfigure": {
+        "title": "UniFi Protect の接続設定を更新",
+        "description": "同じコンソールの新しいアドレスまたは証明書を検証します。既存のデバイスと名前は保持されます。",
+        "data": {
+          "host": "ホスト",
+          "port": "ポート",
+          "verify_ssl": "TLS 証明書を検証"
+        },
+        "data_description": {
+          "host": "https:// を含めず、ホスト名または IP アドレスのみを入力してください。",
+          "verify_ssl": "コンソールの識別情報を検証します（推奨）。検証を無効にすると、認証情報や測定値が傍受されるおそれがあります。"
+        }
       }
     },
     "error": {
       "cannot_connect": "UniFi Protect に接続できませんでした。",
       "invalid_auth": "ユーザー名またはパスワードが無効です。",
       "invalid_response": "Protect が未対応の応答を返しました。",
-      "tls_error": "The console TLS certificate is not trusted. Use a certificate issued by a CA trusted by Home Assistant and a matching hostname.",
-      "unknown": "予期しないエラーが発生しました。Home Assistant のログを確認してください。"
+      "tls_error": "コンソールの TLS 証明書は信頼されていません。Home Assistant が信頼する認証局によって発行された証明書と、その証明書に一致するホスト名を使用してください。",
+      "unknown": "予期しないエラーが発生しました。Home Assistant のログを確認してください。",
+      "different_console": "新しいアドレスは別の Protect コンソールのものです。変更は保存されませんでした。"
     },
     "abort": {
       "already_configured": "この Protect コンソールはすでに設定されています。",
       "reauth_successful": "再認証に成功しました。",
-      "unique_id_mismatch": "この認証情報は別の Protect コンソールのものです。"
+      "unique_id_mismatch": "この認証情報は別の Protect コンソールのものです。",
+      "reconfigure_successful": "既存の Protect 接続設定を更新しました。"
     }
   },
   "entity": {

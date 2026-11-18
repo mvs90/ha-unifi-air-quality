@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "Solo el nombre de host o la dirección IP, sin https://.",
-          "verify_ssl": "Verify the console identity (recommended). Disabling verification allows interception of credentials and readings."
+          "verify_ssl": "Verifica la identidad de la consola (recomendado). Desactivar la verificación permite interceptar las credenciales y las mediciones."
         }
       },
       "reauth_confirm": {
@@ -23,19 +23,34 @@
         "data": {
           "password": "Contraseña"
         }
+      },
+      "reconfigure": {
+        "title": "Actualizar la conexión con UniFi Protect",
+        "description": "Valida la nueva dirección o el certificado de la misma consola. Se conservarán los dispositivos y los nombres existentes.",
+        "data": {
+          "host": "Host",
+          "port": "Puerto",
+          "verify_ssl": "Verificar el certificado TLS"
+        },
+        "data_description": {
+          "host": "Solo el nombre de host o la dirección IP, sin https://.",
+          "verify_ssl": "Verifica la identidad de la consola (recomendado). Desactivar la verificación permite interceptar las credenciales y las mediciones."
+        }
       }
     },
     "error": {
       "cannot_connect": "No se pudo conectar con UniFi Protect.",
       "invalid_auth": "El nombre de usuario o la contraseña no son válidos.",
       "invalid_response": "Protect devolvió una respuesta no compatible.",
-      "tls_error": "The console TLS certificate is not trusted. Use a certificate issued by a CA trusted by Home Assistant and a matching hostname.",
-      "unknown": "Error inesperado. Consulta los registros de Home Assistant."
+      "tls_error": "El certificado TLS de la consola no es de confianza. Utiliza un certificado emitido por una autoridad de certificación en la que confíe Home Assistant y un nombre de host que coincida con el certificado.",
+      "unknown": "Error inesperado. Consulta los registros de Home Assistant.",
+      "different_console": "La nueva dirección pertenece a otra consola Protect. No se ha guardado ningún cambio."
     },
     "abort": {
       "already_configured": "Esta consola Protect ya está configurada.",
       "reauth_successful": "La autenticación se ha renovado correctamente.",
-      "unique_id_mismatch": "Las credenciales pertenecen a otra consola Protect."
+      "unique_id_mismatch": "Las credenciales pertenecen a otra consola Protect.",
+      "reconfigure_successful": "Se ha actualizado la conexión existente con Protect."
     }
   },
   "entity": {

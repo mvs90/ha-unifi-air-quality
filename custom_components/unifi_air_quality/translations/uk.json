@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "Лише ім’я хоста або IP-адреса, без https://.",
-          "verify_ssl": "Verify the console identity (recommended). Disabling verification allows interception of credentials and readings."
+          "verify_ssl": "Перевіряти справжність консолі (рекомендовано). Вимкнення перевірки дозволяє перехоплювати облікові дані та показники."
         }
       },
       "reauth_confirm": {
@@ -23,19 +23,34 @@
         "data": {
           "password": "Пароль"
         }
+      },
+      "reconfigure": {
+        "title": "Оновити підключення до UniFi Protect",
+        "description": "Перевірте нову адресу або сертифікат тієї самої консолі. Наявні пристрої та назви буде збережено.",
+        "data": {
+          "host": "Хост",
+          "port": "Порт",
+          "verify_ssl": "Перевіряти сертифікат TLS"
+        },
+        "data_description": {
+          "host": "Лише ім’я хоста або IP-адреса, без https://.",
+          "verify_ssl": "Перевіряти справжність консолі (рекомендовано). Вимкнення перевірки дозволяє перехоплювати облікові дані та показники."
+        }
       }
     },
     "error": {
       "cannot_connect": "Не вдалося підключитися до UniFi Protect.",
       "invalid_auth": "Неправильне ім’я користувача або пароль.",
       "invalid_response": "Protect повернув непідтримувану відповідь.",
-      "tls_error": "The console TLS certificate is not trusted. Use a certificate issued by a CA trusted by Home Assistant and a matching hostname.",
-      "unknown": "Неочікувана помилка. Перевірте журнали Home Assistant."
+      "tls_error": "TLS-сертифікат консолі не є довіреним. Використовуйте сертифікат, виданий центром сертифікації, якому довіряє Home Assistant, та ім’я хоста, що відповідає сертифікату.",
+      "unknown": "Неочікувана помилка. Перевірте журнали Home Assistant.",
+      "different_console": "Нова адреса належить іншій консолі Protect. Зміни не збережено."
     },
     "abort": {
       "already_configured": "Цю консоль Protect уже налаштовано.",
       "reauth_successful": "Повторна автентифікація успішна.",
-      "unique_id_mismatch": "Облікові дані належать іншій консолі Protect."
+      "unique_id_mismatch": "Облікові дані належать іншій консолі Protect.",
+      "reconfigure_successful": "Наявне підключення до Protect оновлено."
     }
   },
   "entity": {

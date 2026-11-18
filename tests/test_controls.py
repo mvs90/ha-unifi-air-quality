@@ -99,6 +99,7 @@ async def test_platforms_add_all_controls(hass) -> None:
     coordinator = _coordinator(_device())
     entry = SimpleNamespace(
         runtime_data=SimpleNamespace(coordinator=coordinator),
+        entry_id="test-entry",
         async_on_unload=MagicMock(),
     )
 
@@ -120,13 +121,14 @@ async def test_platforms_add_all_controls(hass) -> None:
 async def test_number_platform_removes_obsolete_controls(hass) -> None:
     """Verify number platform removes obsolete controls."""
     coordinator = _coordinator(_device())
-    entry = SimpleNamespace(
-        runtime_data=SimpleNamespace(coordinator=coordinator),
-        async_on_unload=MagicMock(),
-    )
+    from .ha_test_helpers import MockConfigEntry
+
+    entry = MockConfigEntry(domain=DOMAIN)
+    entry.add_to_hass(hass)
+    entry.runtime_data = SimpleNamespace(coordinator=coordinator)
     registry = er.async_get(hass)
     obsolete = registry.async_get_or_create(
-        "number", DOMAIN, "device-id_vape_low_threshold"
+        "number", DOMAIN, "device-id_vape_low_threshold", config_entry=entry
     )
 
     await async_setup_numbers(hass, entry, lambda entities: None)

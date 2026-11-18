@@ -1,6 +1,7 @@
 """Exercise real translation loading on fresh and existing installations."""
 
 import json
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -47,6 +48,11 @@ def test_translation_catalog_is_complete(language):
         json.loads((INTEGRATION_PATH / "translations" / f"{language}.json").read_text())
     )
     assert translated.keys() == source.keys()
+    for key, text in source.items():
+        # Format substitutions must survive translation unchanged.
+        assert set(re.findall(r"\{[^{}]+\}", translated[key])) == set(
+            re.findall(r"\{[^{}]+\}", text)
+        ), key
 
 
 def _entry(hass):

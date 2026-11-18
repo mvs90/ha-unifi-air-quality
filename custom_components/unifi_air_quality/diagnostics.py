@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+from time import monotonic
 from typing import Any
 from uuid import uuid4
 
@@ -12,7 +13,7 @@ from homeassistant.core import HomeAssistant
 
 from . import UnifiAirQualityConfigEntry
 from .api import _ALARM_STATUSES, _MEASUREMENT_KEYS, _NON_ALARM_STATUSES
-from .const import CONF_VERIFY_SSL
+from .const import CONF_VERIFY_SSL, DATA_FRESHNESS_SECONDS, MEASUREMENT_ALIASES
 
 _REDACTED = "**REDACTED**"
 # Unknown keys are omitted, including numeric fields and nested containers.
@@ -56,6 +57,13 @@ def sanitize_raw(
     prefix = prefix or uuid4().hex
     if not isinstance(value, dict):
         return _REDACTED
+    if key == "airQuality":
+        # Export the same effective canonical reading as the entity/freshness
+        # model, not an older duplicate alias left in a historical payload.
+        value = value.copy()
+        for canonical, legacy in MEASUREMENT_ALIASES.items():
+            if legacy in value:
+                value.setdefault(canonical, value.pop(legacy))
     result = {}
     allowed = (
         _CONTAINERS.get(key, set())
@@ -106,6 +114,35 @@ def sanitize_raw(
     return result
 
 
+def _health_category(
+    client: Any, devices: list[dict[str, Any]], refresh_age: float | None
+) -> str:
+    """Summarize safe health without serializing exceptions or server messages."""
+    if client.authentication_failed:
+        return "authentication_failed"
+    if client.protocol_error:
+        return "protocol_error"
+    if refresh_age is None:
+        return "uninitialized"
+    if not devices:
+        return "empty_inventory" if refresh_age < DATA_FRESHNESS_SECONDS else "stale"
+    if not any(device["freshness"]["fresh"] for device in devices):
+        return "stale"
+    for device in devices:
+        if not device["freshness"]["fresh"] or device.get("isConnected") is False:
+            return "degraded"
+        # Null/absent optional readings are unknown, not stale cached numbers.
+        for metric, reading in device.get("airQuality", {}).items():
+            value = reading.get("value") if isinstance(reading, dict) else reading
+            if (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and not device["freshness"]["measurements"][metric]["fresh"]
+            ):
+                return "degraded"
+    return "healthy" if client.websocket_connected else "polling"
+
+
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: UnifiAirQualityConfigEntry
 ) -> dict[str, Any]:
@@ -114,6 +151,18 @@ async def async_get_config_entry_diagnostics(
     snapshot = runtime.coordinator.data
     aliases: dict[str, str] = {}
     prefix = uuid4().hex
+    devices = []
+    for device in snapshot.devices:
+        sanitized = sanitize_raw(device.raw, aliases=aliases, prefix=prefix)
+        sanitized["id"] = aliases.setdefault(
+            device.id, f"<export:{prefix}:device{len(aliases) + 1}>"
+        )
+        sanitized["freshness"] = runtime.client.diagnostic_freshness(device.id)
+        devices.append(sanitized)
+    last_refresh = runtime.client.last_successful_refresh
+    refresh_age = (
+        None if last_refresh is None else round(max(0.0, monotonic() - last_refresh), 1)
+    )
     return {
         "config_entry": {
             CONF_HOST: _REDACTED,
@@ -125,14 +174,14 @@ async def async_get_config_entry_diagnostics(
             "adapter": "private_bootstrap_websocket",
             "websocket_connected": runtime.client.websocket_connected,
             "protocol_error": bool(runtime.client.protocol_error),
+            "authentication_failed": bool(runtime.client.authentication_failed),
+            "health": _health_category(runtime.client, devices, refresh_age),
+            "bootstrap_age_seconds": refresh_age,
             "protect_version": safe_version(snapshot.protect_version),
             "air_quality_device_count": len(snapshot.devices),
             "active_alarm_count": sum(
                 len(device.active_alarms) for device in snapshot.devices
             ),
         },
-        "devices": [
-            sanitize_raw(device.raw, aliases=aliases, prefix=prefix)
-            for device in snapshot.devices
-        ],
+        "devices": devices,
     }

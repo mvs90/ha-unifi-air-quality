@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   validate:
+    name: HACS validation
     runs-on: ubuntu-latest
     steps:
       # Official image behind hacs/action; digest verified 2026-11-18.

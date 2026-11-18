@@ -17,6 +17,19 @@
           "verify_ssl": "Verify the console identity (recommended). Disabling verification allows interception of credentials and readings."
         }
       },
+      "reconfigure": {
+        "title": "Update UniFi Protect connection",
+        "description": "Validate the new address or certificate for the same console. Existing devices and names remain.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "verify_ssl": "Verify TLS certificate"
+        },
+        "data_description": {
+          "host": "Hostname or IP address only, without https://.",
+          "verify_ssl": "Verify the console identity (recommended). Disabling verification allows interception of credentials and readings."
+        }
+      },
       "reauth_confirm": {
         "title": "Reauthenticate with UniFi Protect",
         "description": "Enter the current password for the configured local account.",
@@ -30,12 +43,14 @@
       "invalid_auth": "The username or password is invalid.",
       "invalid_response": "Protect returned an unsupported response.",
       "tls_error": "The console TLS certificate is not trusted. Use a certificate issued by a CA trusted by Home Assistant and a matching hostname.",
-      "unknown": "Unexpected error. Check the Home Assistant logs."
+      "unknown": "Unexpected error. Check the Home Assistant logs.",
+      "different_console": "The new address belongs to another Protect console. No changes were saved."
     },
     "abort": {
       "already_configured": "This Protect console is already configured.",
       "reauth_successful": "Reauthentication was successful.",
-      "unique_id_mismatch": "The credentials belong to a different Protect console."
+      "unique_id_mismatch": "The credentials belong to a different Protect console.",
+      "reconfigure_successful": "The existing connection has been updated."
     }
   },
   "entity": {

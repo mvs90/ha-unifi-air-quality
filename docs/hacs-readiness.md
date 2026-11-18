@@ -55,8 +55,9 @@ redaction, and local brand-image delivery. Only Home Assistant's display of a
 user-named entity changes in the preview: it also includes the device name.
 The exact stored user name and entity ID remain unchanged.
 
-CI tests the declared minimum 2026.8.0, the previous baseline 2026.8.1, and
-stable 2026.10.4 with their matching test-helper releases. Preview tests use
+The fork supports Home Assistant 2026.10.4 as its tested and audited minimum;
+older 2026.8.x support was withdrawn after the dependency security review.
+The historical upstream preview tests used
 the new official `pytest-home-assistant` package from Core commit
 `4be5ba96f41e0f4052899e0f6e953c5ce2143e3c`, rather than replacing or patching
 Home Assistant itself. The container runner installs test tools separately

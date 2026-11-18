@@ -17,7 +17,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
-from .api import PrivateProtectClient, reject_protect_redirects
+from .api import PrivateProtectClient, ProtectApiError, reject_protect_redirects
 from .const import CONF_VERIFY_SSL, DOMAIN, MANUFACTURER
 from .coordinator import UnifiAirQualityCoordinator
 
@@ -109,3 +109,34 @@ async def async_unload_entry(
         return False
     await entry.runtime_data.client.async_close()
     return True
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    entry: UnifiAirQualityConfigEntry,
+    device_entry: dr.DeviceEntry,
+) -> bool:
+    """Allow explicit cleanup only after Protect confirms this sensor is unpaired.
+
+    The coordinator may retain a recent snapshot during network errors. Fetch
+    directly so an outage, an unsupported inventory, or cached stream removal
+    can never authorize deleting the user's registry metadata.
+    """
+    if device_entry.config_entry_id != entry.entry_id:
+        return False
+    device_ids = {
+        identifier
+        for domain, identifier in device_entry.identifiers
+        if domain == DOMAIN
+    }
+    runtime = getattr(entry, "runtime_data", None)
+    if not device_ids or runtime is None:
+        return False
+    try:
+        snapshot = await runtime.client.async_get_snapshot()
+    except ProtectApiError:
+        return False
+    if snapshot.console_id != entry.unique_id:
+        return False
+    runtime.coordinator.async_set_updated_data(snapshot)
+    return device_ids.isdisjoint(device.id for device in snapshot.devices)

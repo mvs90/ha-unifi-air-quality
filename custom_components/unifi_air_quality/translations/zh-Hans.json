@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "仅填写主机名或 IP 地址，不要包含 https://。",
-          "verify_ssl": "Verify the console identity (recommended). Disabling verification allows interception of credentials and readings."
+          "verify_ssl": "验证控制台身份（推荐）。禁用验证后，凭据和测量数据可能被截获。"
         }
       },
       "reauth_confirm": {
@@ -23,19 +23,34 @@
         "data": {
           "password": "密码"
         }
+      },
+      "reconfigure": {
+        "title": "更新 UniFi Protect 连接",
+        "description": "验证同一控制台的新地址或证书。现有设备和名称将保留。",
+        "data": {
+          "host": "主机",
+          "port": "端口",
+          "verify_ssl": "验证 TLS 证书"
+        },
+        "data_description": {
+          "host": "仅填写主机名或 IP 地址，不要包含 https://。",
+          "verify_ssl": "验证控制台身份（推荐）。禁用验证后，凭据和测量数据可能被截获。"
+        }
       }
     },
     "error": {
       "cannot_connect": "无法连接到 UniFi Protect。",
       "invalid_auth": "用户名或密码无效。",
       "invalid_response": "Protect 返回了不支持的响应。",
-      "tls_error": "The console TLS certificate is not trusted. Use a certificate issued by a CA trusted by Home Assistant and a matching hostname.",
-      "unknown": "发生意外错误。请检查 Home Assistant 日志。"
+      "tls_error": "控制台的 TLS 证书不受信任。请使用由 Home Assistant 信任的证书颁发机构签发的证书，并使用与证书匹配的主机名。",
+      "unknown": "发生意外错误。请检查 Home Assistant 日志。",
+      "different_console": "新地址属于另一台 Protect 控制台。未保存任何更改。"
     },
     "abort": {
       "already_configured": "此 Protect 控制台已配置。",
       "reauth_successful": "重新验证成功。",
-      "unique_id_mismatch": "这些凭据属于另一个 Protect 控制台。"
+      "unique_id_mismatch": "这些凭据属于另一个 Protect 控制台。",
+      "reconfigure_successful": "已更新现有的 Protect 连接。"
     }
   },
   "entity": {

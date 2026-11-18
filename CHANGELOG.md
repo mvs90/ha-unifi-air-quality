@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — fork hardening
+## 0.6.0 — fork hardening (pinned-commit distribution)
 
 - Reconcile recovered alarm state; isolate forbidden writes from read sessions.
 - Verify TLS by default for new entries and recover unexpected stream failures.
@@ -9,6 +9,15 @@
 - Discover devices dynamically across all platforms without ID/name churn.
 - Minimize diagnostics with allowlists and random per-export aliases.
 - Add security/regression coverage and function-level documentation.
+- Bound HTTPS responses, deadlines and authenticated origins; preserve fresh session state.
+- Add endpoint/TLS reconfiguration while preserving the existing console identity.
+- Require Home Assistant 2026.10.4, align dependency audits and bind development to loopback.
+- Scan introduced commit history for secrets, including deleted intermediate values.
+- Document pinned installation, upstream migration and rollback with preserved registries.
+- Retain unresolved sensor/event alarms and canonical metric values through refresh races.
+- Allow safe cleanup of permanently unpaired devices and scope obsolete controls per entry.
+- Report relative per-metric freshness and authentication health in private diagnostics.
+- Translate TLS/reconfiguration guidance in every catalog and identify upstream sponsorship.
 
 
 ## 0.5.4

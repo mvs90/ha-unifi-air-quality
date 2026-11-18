@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import voluptuous as vol
-from aiohttp import ClientSession, CookieJar
+from aiohttp import ClientSession, DummyCookieJar
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
@@ -25,6 +25,7 @@ from .api import (
     ProtectInvalidAuth,
     ProtectProtocolError,
     ProtectTlsError,
+    reject_protect_redirects,
 )
 from .const import CONF_VERIFY_SSL, DEFAULT_PORT, DEFAULT_VERIFY_SSL, DOMAIN
 
@@ -62,7 +63,9 @@ class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Validate a setup attempt with an isolated session and cleanup."""
         # Detach the attempt's session even if construction or cancellation fails.
         session = async_create_clientsession(
-            self.hass, cookie_jar=CookieJar(unsafe=True)
+            self.hass,
+            cookie_jar=DummyCookieJar(),
+            middlewares=(reject_protect_redirects,),
         )
         try:
             return await self._validate_session(data, session)

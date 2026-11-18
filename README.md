@@ -152,8 +152,9 @@ handshake once. Concurrent requests share the renewed session. Home Assistant
 requests reauthentication only when login or the freshly authenticated request
 is rejected; a temporarily unreachable console remains a connection failure.
 Each config entry and each setup/reauthentication attempt uses its own HTTP
-session and cookie jar, never Home Assistant's shared session. After rejected
-credentials, automatic password logins stop until reauthentication succeeds;
+session, never Home Assistant's shared session. The adapter owns generation-scoped
+cookie headers; automatic cookie storage is disabled so a delayed old response
+cannot replace the renewed session. After rejected credentials, automatic password logins stop until reauthentication succeeds;
 the WebSocket also requests reauthentication immediately.
 
 New setups verify HTTPS and WSS certificates by default. Use a console
@@ -202,14 +203,19 @@ reevaluates availability every five seconds, so stale readings become unavailabl
 within **125 seconds**. A connected WebSocket alone is insufficient evidence of
 fresh measurements. Device-offline flags still take effect immediately.
 Brief transport outages preserve only still-fresh data; successful refreshes
-or numeric/status pushes restore it automatically. Protocol/authentication failures
-make the affected integration unavailable immediately.
+or numeric/status pushes restore it automatically. Current-session REST credential
+rejections cause reauthentication and availability loss; superseded request
+failures cannot override a newer verified response. WebSocket-only 401/403
+denials are degraded update-stream health, not proof that monitoring credentials
+are invalid: the periodic REST snapshot continues and stale values expire
+normally. Real protocol failures still fail closed.
 
 Reconnects refresh bootstrap before following its cursor. Current measurement
 statuses replace transient alarm caches, clearing missed end events. An orphaned
 alarm without a confirming status expires to **unknown**. Recent event identities
 are retained so a later matching Protect end frame can resolve that alarm.
-A newer alarm ending does **not** confirm an older unresolved event has ended:
+A newer alarm ending does **not** confirm an older unresolved event or sensor-status
+source has ended. Sensor-only uncertainty needs an authoritative normal reading:
 the aggregate remains unknown until the last known source ends or a verified
 normal sensor status confirms all-clear. If bounded identity history is pruned,
 only an authoritative normal status can clear the remaining uncertainty.
@@ -223,12 +229,30 @@ New devices are discovered on all seven entity platforms during push/refresh
 without reload. Removed devices' entities remain unavailable and retain registry
 settings/history; reappearance reuses the same IDs and user names.
 
+All authenticated HTTP requests use the configured canonical HTTPS host and
+port (DNS, IPv4 and IPv6 supported), refuse redirects and impose **25-second
+total / 10-second connect / 15-second read** deadlines. WebSocket handshakes
+have a **12-second opening deadline**, never follow redirects, and continue
+bounded reconnects on channel-specific denials. Protect sensor IDs must be
+single safe URL path segments. Controls compare verified server read-back
+using the expected wire type: a boolean cannot be confirmed by 0/1, missing is
+not the same as explicit null, and equivalent finite integer/float values
+are accepted. Public alarm keys keep the existing canonical names
+(pm1p0, pm2p5, pm4p0, pm10p0 and vape), while older wire aliases
+(pm1, pm2_5, pm4, pm10 and vapeIndex) are normalized in readings,
+freshness and events without entity-ID changes.
+
 The undocumented bootstrap, sensor PATCH and two-frame WebSocket APIs may change
 with any Protect/firmware upgrade. Known required schema/status changes produce
 an actionable HA update error and sanitized diagnostics instead of false alerts.
 Unknown optional fields are tolerated. Frames are limited to **1 MiB wire data
 per frame**, **2 MiB decompressed per frame**, and two frames per message; bounded
-zlib expansion rejects bombs, truncation and concatenated streams. Incompatible
+zlib expansion rejects bombs, truncation and concatenated streams.
+Full bootstrap HTTP JSON bodies have a **16 MiB limit on both wire and decoded bytes**
+(including responses with no Content-Length). Gzip and deflate are decoded incrementally
+with bounded output; unsupported, truncated and concatenated encodings fail closed. Invalid/mixed or duplicate-ID inventories
+raise an actionable protocol error without replacing the previous registry.
+A genuinely empty inventory and unknown valid sensor models remain supported. Incompatible
 frames trigger a controlled reconnect/resync.
 
 The regression fixtures cover the existing scalar Protect variant (fixture

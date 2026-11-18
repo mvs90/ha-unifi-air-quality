@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import UnifiAirQualityConfigEntry
+from .const import MEASUREMENT_ALIASES
 from .coordinator import UnifiAirQualityCoordinator
 from .entity import UnifiAirQualityEntity, async_setup_dynamic_entities
 
@@ -134,7 +135,10 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
         air_quality = device.raw.get("airQuality") if device else None
         if not isinstance(air_quality, dict):
             return None
-        measurement = air_quality.get(self.entity_description.payload_key)
+        key = self.entity_description.payload_key
+        measurement = air_quality.get(key)
+        if key not in air_quality:
+            measurement = air_quality.get(MEASUREMENT_ALIASES.get(key))
         if not isinstance(measurement, dict):
             return None
         status = measurement.get("status")

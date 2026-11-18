@@ -44,13 +44,12 @@ def test_snapshot_rejects_invalid_bootstrap() -> None:
 
 
 def test_snapshot_skips_malformed_devices_and_uses_fallbacks() -> None:
-    """Verify snapshot skips malformed devices and uses fallbacks."""
+    """Verify unknown valid device models do not affect valid sensor data."""
     snapshot = snapshot_from_bootstrap(
         {
             "nvr": {"mac": "console-mac", "name": 42, "version": 6},
             "lastUpdateId": 5,
             "sensors": [
-                None,
                 {"id": "regular", "type": "UP-Sense"},
                 {
                     "id": "air",

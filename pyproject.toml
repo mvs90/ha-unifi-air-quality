@@ -23,7 +23,7 @@ test = [
   "pytest-asyncio==1.4.0",
   "pytest-cov==7.1.0",
   "pytest-homeassistant-custom-component==0.13.375",
-  "ruff>=0.12",
+  "ruff==0.17.5",
 ]
 
 [tool.pytest.ini_options]
@@ -40,7 +40,11 @@ target-version = "py313"
 line-length = 88
 
 [tool.ruff.lint]
-select = ["B", "E", "F", "I", "UP"]
+select = ["B", "E", "F", "I", "S", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Assertions are pytest's API; these credentials are synthetic test data only.
+"tests/**" = ["S101", "S105", "S106"]
 
 [tool.setuptools]
 packages = []

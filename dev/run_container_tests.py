@@ -54,7 +54,8 @@ def main() -> int:
             install_environment.pop(setting, None)
         install_environment["UV_NO_CONFIG"] = "1"
         install_environment["UV_DEFAULT_INDEX"] = "https://pypi.org/simple"
-        subprocess.run(
+        # Arguments originate from this developer runner, without shell evaluation.
+        subprocess.run(  # noqa: S603 -- explicit pip/uv command, no shell.
             [*install, "--no-deps", helpers],
             check=True,
             env=install_environment,
@@ -75,7 +76,10 @@ def main() -> int:
                 requirements.append(item)
         if helper_name == "pytest-home-assistant":
             requirements.append("pytest-cov==7.1.0")
-        subprocess.run([*install, *requirements], check=True, env=install_environment)
+        # Only the fixed tooling list and maintainer-selected helper are installed.
+        subprocess.run(  # noqa: S603 -- explicit pip/uv command, no shell.
+            [*install, *requirements], check=True, env=install_environment
+        )
         # Append rather than prepend: never replace the image's HA dependencies
         # with the stable test helper's pinned versions on a preview image.
         sys.path.append(str(target))
@@ -83,7 +87,8 @@ def main() -> int:
         os.environ["COVERAGE_FILE"] = str(Path(temporary) / ".coverage")
         os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
         os.chdir(repository)
-        assert metadata.version("homeassistant") == version
+        if metadata.version("homeassistant") != version:
+            raise RuntimeError("Test tooling replaced the container HA version")
 
         # Preview HA must establish its httpx2 compatibility aliases before
         # third-party pytest plugins import httpx.

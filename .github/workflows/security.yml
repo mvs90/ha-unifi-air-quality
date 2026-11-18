@@ -1,0 +1,38 @@
+name: Security
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "20 7 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        with:
+          python-version: "3.14"
+      - name: Install the declared runtime and test dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -e '.[test]'
+          python -m venv .security
+          .security/bin/pip install pip-audit==2.10.1 detect-secrets==1.5.0 ruff==0.17.5
+      - name: Static security rules and positive detection test
+        run: |
+          .venv/bin/ruff check .
+          .security/bin/python dev/check_security_gates.py
+      - name: Scan tracked files for secrets without printing secret values
+        run: git ls-files -z | xargs -0 .security/bin/detect-secrets-hook --baseline .secrets.baseline
+      - name: Audit the resolved environment and validate scoped upstream exceptions
+        run: |
+          .security/bin/pip-audit --path .venv/lib/python3.14/site-packages --skip-editable --format json --output /tmp/pip-audit.json || test -f /tmp/pip-audit.json
+          .venv/bin/python dev/check_dependency_audit.py /tmp/pip-audit.json

@@ -193,9 +193,10 @@ publicly without review.** Report issues to this fork's issue tracker.
 ## Recovery, availability and private-API compatibility
 
 Full refreshes are scheduled at least every 60 seconds (with a five-second
-health-timer granularity), independently of push traffic; in-flight refreshes
-are not duplicated. A reading or confirmed alarm status is fresh for **120 seconds** after a verified
-bootstrap or numeric update for that metric. An update to another metric,
+health-timer granularity), independently of push traffic. If a push arrives
+during a refresh, its fields take precedence and the bootstrap still verifies
+other readings. A reading or confirmed alarm status is fresh for **120 seconds**
+after a verified bootstrap or a push confirming that value or status. An update to another metric,
 an empty heartbeat, or an unknown field cannot refresh an old reading. HA
 reevaluates availability every five seconds, so stale readings become unavailable
 within **125 seconds**. A connected WebSocket alone is insufficient evidence of
@@ -206,8 +207,9 @@ make the affected integration unavailable immediately.
 
 Reconnects refresh bootstrap before following its cursor. Current measurement
 statuses replace transient alarm caches, clearing missed end events. An orphaned
-alarm without a confirming status expires to **unknown**, without fabricating an
-`ended` event. Existing public alarm event types and unique IDs are retained.
+alarm without a confirming status expires to **unknown**. Recent event identities
+are retained so a later matching Protect end frame can resolve that alarm.
+Existing public alarm event types and unique IDs are retained.
 Multiple event IDs and sensor/event sources remain aggregated during streaming.
 Repeated reconnect failures use 1, 2, 4, 8, 16, 30 second delays (30-second cap);
 a sustained connection resets this sequence. Logs contain error classes, not raw

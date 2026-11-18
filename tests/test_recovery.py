@@ -77,6 +77,57 @@ async def test_incomplete_resync_expires_orphan_without_false_end(load_fixture):
     assert callback.call_count == 1
 
 
+@pytest.mark.parametrize("event_count", [1, 2])
+async def test_partial_alarm_ends_after_sensor_bootstrap(event_count, load_fixture):
+    """Keep enough event identity to confirm an end on scalar firmware."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    events = json.loads(load_fixture("websocket_alarm_events.json"))
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    await client.async_get_snapshot()
+    callback = MagicMock()
+    client.subscribe_alarm_events(callback)
+    started, ended = events["extreme_started"], events["extreme_ended"]
+    ids = [f"event-{index}" for index in range(event_count)]
+    for event_id in ids:
+        client._process_websocket_payload(
+            _frame(started["action"] | {"id": event_id}) + _frame(started["data"])
+        )
+    assert callback.call_count == 1
+    assert (await client.async_get_snapshot()).devices[0].uncertain_alarm_metrics == (
+        "co2",
+    )
+    for event_id in ids:
+        remaining = event_id != ids[-1]
+        frame = _frame(ended["action"] | {"id": event_id}) + _frame(ended["data"])
+        client._process_websocket_payload(frame)
+        client._process_websocket_payload(frame)
+        assert bool(client.snapshot.devices[0].uncertain_alarm_metrics) is remaining
+        assert callback.call_count == (1 if remaining else 2)
+    assert not client.snapshot.devices[0].active_alarms
+    assert callback.call_args.args[0].transition == "ended"
+    assert client.is_alarm_fresh("anonymous-air-quality-id", "co2")
+    await client.async_get_snapshot()
+    assert client.is_alarm_fresh("anonymous-air-quality-id", "co2")
+
+
+async def test_expired_event_metadata_remains_bounded(load_fixture):
+    """Prune old identities while keeping recent partial end frames decodable."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    events = json.loads(load_fixture("websocket_alarm_events.json"))
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    await client.async_get_snapshot()
+    started = events["extreme_started"]
+    with patch("custom_components.unifi_air_quality.api._RETIRED_ALARM_EVENT_LIMIT", 2):
+        for event_id in ("first", "second", "third"):
+            client._process_websocket_payload(
+                _frame(started["action"] | {"id": event_id}) + _frame(started["data"])
+            )
+        await client.async_get_snapshot()
+    assert set(client._raw_alarm_events) == {"second", "third"}
+    assert set(client._alarm_event_devices) == {"second", "third"}
+    assert client.snapshot.devices[0].uncertain_alarm_metrics == ("co2",)
+
+
 async def test_forbidden_write_keeps_cookie_reads_and_push(load_fixture):
     """Verify forbidden write keeps cookie reads and push."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))

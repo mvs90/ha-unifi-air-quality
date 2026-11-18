@@ -7,6 +7,7 @@ import logging
 import math
 from collections.abc import Callable, Mapping
 from copy import deepcopy
+from dataclasses import dataclass, field
 from http.cookies import SimpleCookie
 from time import monotonic
 from typing import Any
@@ -39,6 +40,7 @@ _WS_PATH = "/proxy/protect/ws/updates"
 _SENSOR_PATH = "/proxy/protect/api/sensors/{device_id}"
 
 _ALARM_EVENT_TYPES = {"sensorExtremeValues", "sensorVape"}
+_RETIRED_ALARM_EVENT_LIMIT = 256
 _NON_ALARM_STATUSES = frozenset({"good", "neutral", "normal", "safe"})
 _ALARM_STATUSES = frozenset({"high", "low", "critical", "detected"})
 _MEASUREMENT_KEYS = frozenset(
@@ -92,6 +94,19 @@ class ProtectProtocolError(ProtectApiError):
     """Protect returned an unexpected payload."""
 
 
+type _FieldPath = tuple[str, ...]
+type _AlarmKey = tuple[str, str]
+
+
+@dataclass(slots=True)
+class _BootstrapPushes:
+    """Fields confirmed by the stream while one HTTP bootstrap is in flight."""
+
+    sensor_fields: dict[str, set[_FieldPath]] = field(default_factory=dict)
+    event_alarms: set[_AlarmKey] = field(default_factory=set)
+    cursor: str | None = None
+
+
 def _host_for_url(host: str) -> str:
     """Validate a host and bracket IPv6 literals for HTTPS URLs."""
     # A host is not a URL: reject paths before constructing credential requests.
@@ -109,6 +124,39 @@ def _deep_merge(target: dict[str, Any], update: Mapping[str, Any]) -> None:
             _deep_merge(current, value)
         else:
             target[key] = value
+
+
+def _pushed_fields(
+    current: Mapping[str, Any], update: Mapping[str, Any]
+) -> set[_FieldPath]:
+    """Collect replaced fields, including values repeated by Protect."""
+    paths = set()
+    for name, value in update.items():
+        before = current.get(name)
+        if isinstance(before, dict) and isinstance(value, Mapping):
+            paths.update((name, *child) for child in _pushed_fields(before, value))
+        else:
+            paths.add((name,))
+    return paths
+
+
+def _copy_pushed_fields(
+    target: dict[str, Any], current: Mapping[str, Any], paths: set[_FieldPath]
+) -> None:
+    """Overlay only the pushed fields, retaining unrelated bootstrap values."""
+    for path in paths:
+        source, destination = current, target
+        for name in path[:-1]:
+            source = source.get(name)
+            if not isinstance(source, Mapping):
+                # A later push replaced the parent, which has its own field path.
+                break
+            if not isinstance(destination.get(name), dict):
+                destination[name] = {}
+            destination = destination[name]
+        else:
+            if path[-1] in source:
+                destination[path[-1]] = deepcopy(source[path[-1]])
 
 
 def _contains_update(confirmed: Mapping[str, Any], update: Mapping[str, Any]) -> bool:
@@ -144,8 +192,8 @@ def _validate_sensor(sensor: Mapping[str, Any]) -> None:
         raise ProtectProtocolError("Air quality sensor has no valid identifier")
     if "isConnected" in sensor and not isinstance(sensor["isConnected"], bool):
         raise ProtectProtocolError("Unsupported sensor connection state")
-    for field in ("airQuality", "airQualitySettings", "ledSettings"):
-        if field in sensor and not isinstance(sensor[field], Mapping):
+    for section in ("airQuality", "airQualitySettings", "ledSettings"):
+        if section in sensor and not isinstance(sensor[section], Mapping):
             raise ProtectProtocolError("Unsupported sensor payload structure")
     # Optional future metrics are ignored; known metrics must retain semantics.
     for metric, reading in sensor.get("airQuality", {}).items():
@@ -260,7 +308,7 @@ class PrivateProtectClient:
         self.websocket_connected = False
         self._closing = False
         self._write_lock = asyncio.Lock()
-        self._state_revision = 0
+        self._pending_bootstraps: dict[int, _BootstrapPushes] = {}
         self._refresh_request_id = 0
         self._last_refresh_applied = 0
         self._verified_at: dict[str, float] = {}
@@ -429,11 +477,45 @@ class PrivateProtectClient:
             raise
 
     async def _async_fetch_snapshot(self) -> ProtectSnapshot:
-        """Authenticate if needed and retrieve a raw bootstrap snapshot."""
+        """Publish a verified bootstrap with any newer confirmed stream fields."""
         await self._async_authenticate()
-        revision = self._state_revision
         self._refresh_request_id += 1
         request_id = self._refresh_request_id
+        pushes = self._pending_bootstraps[request_id] = _BootstrapPushes()
+        try:
+            payload = await self._async_read_bootstrap()
+        finally:
+            self._pending_bootstraps.pop(request_id)
+
+        if request_id < self._last_refresh_applied:
+            # A newer HTTP request has already published its response.
+            return self._snapshot
+        # Validate the response and the merged state before changing the cache.
+        snapshot = snapshot_from_bootstrap(payload)
+        if pushes.sensor_fields or pushes.event_alarms or pushes.cursor is not None:
+            payload = self._merge_bootstrap_pushes(payload, snapshot, pushes)
+            snapshot = snapshot_from_bootstrap(payload)
+        self._reconcile_bootstrap_alarms(snapshot, pushes.event_alarms)
+        snapshot = snapshot_from_bootstrap(
+            payload, self._alarms_by_device(), self._uncertain_alarm_metrics
+        )
+        self._raw_devices = {
+            device.id: deepcopy(device.raw) for device in snapshot.devices
+        }
+        self._snapshot = snapshot
+        self._last_refresh_applied = request_id
+        self.protocol_error = False
+        self.last_successful_refresh = monotonic()
+        self._verified_at = {
+            device.id: self.last_successful_refresh for device in snapshot.devices
+        }
+        self._metric_verified_at.clear()
+        for device in snapshot.devices:
+            self._record_measurements(device.id, device.raw)
+        return snapshot
+
+    async def _async_read_bootstrap(self) -> dict[str, Any]:
+        """Retrieve Protect bootstrap JSON with at most one session renewal."""
         for attempt in range(2):
             generation = self._auth_generation
             try:
@@ -461,32 +543,41 @@ class PrivateProtectClient:
 
         if not isinstance(payload, dict):
             raise ProtectProtocolError("Protect bootstrap must be an object")
-        if request_id < self._last_refresh_applied:
-            # A newer HTTP request has already published its response.
-            return self._snapshot
-        if revision != self._state_revision:
-            # A push arriving during HTTP is newer; never roll it back.
-            raise ProtectCannotConnect("Protect changed during refresh; retry required")
-        # Validate the entire bootstrap before changing confirmed state.
-        snapshot = snapshot_from_bootstrap(payload)
-        self._reconcile_bootstrap_alarms(snapshot)
-        snapshot = snapshot_from_bootstrap(
-            payload, self._alarms_by_device(), self._uncertain_alarm_metrics
-        )
-        self._raw_devices = {
-            device.id: deepcopy(device.raw) for device in snapshot.devices
+        return payload
+
+    def _merge_bootstrap_pushes(
+        self,
+        payload: dict[str, Any],
+        snapshot: ProtectSnapshot,
+        pushes: _BootstrapPushes,
+    ) -> dict[str, Any]:
+        """Combine current bootstrap readings with fields changed during the read."""
+        devices = {device.id: device.raw for device in snapshot.devices}
+        for device_id, fields in pushes.sensor_fields.items():
+            current = self._raw_devices.get(device_id)
+            if current is None:
+                devices.pop(device_id, None)
+            elif () in fields:
+                # Add/remove replaces device identity and all older fields.
+                devices[device_id] = deepcopy(current)
+            elif device_id in devices:
+                _copy_pushed_fields(devices[device_id], current, fields)
+
+        for device_id, metric in pushes.event_alarms:
+            reading = devices.get(device_id, {}).get("airQuality", {}).get(metric)
+            if isinstance(reading, dict):
+                # An older bootstrap status must not undo a recent event transition.
+                current = self._raw_devices.get(device_id, {})
+                recent = current.get("airQuality", {}).get(metric)
+                if isinstance(recent, Mapping) and "status" in recent:
+                    reading["status"] = recent["status"]
+                else:
+                    reading.pop("status", None)
+
+        return payload | {
+            "sensors": list(devices.values()),
+            "lastUpdateId": pushes.cursor or snapshot.last_update_id,
         }
-        self._snapshot = snapshot
-        self._last_refresh_applied = request_id
-        self.protocol_error = False
-        self.last_successful_refresh = monotonic()
-        self._verified_at = {
-            device.id: self.last_successful_refresh for device in snapshot.devices
-        }
-        self._metric_verified_at.clear()
-        for device in snapshot.devices:
-            self._record_measurements(device.id, device.raw)
-        return snapshot
 
     async def async_update_device(
         self, device_id: str, update: Mapping[str, Any]
@@ -664,6 +755,7 @@ class PrivateProtectClient:
             raise ProtectProtocolError("Sensor update has no identifier")
 
         operation = action.get("action")
+        previous = self._raw_devices.get(device_id)
         if operation == "remove":
             self._raw_devices.pop(device_id, None)
             self._clear_device_alarm_states(device_id)
@@ -677,8 +769,23 @@ class PrivateProtectClient:
             self._process_sensor_alarm_statuses(device_id, data)
         else:
             raise ProtectProtocolError("Unsupported sensor update operation")
-        self._state_revision += 1
-        self._rebuild_snapshot(action.get("newUpdateId"))
+        cursor = action.get("newUpdateId")
+        if self._pending_bootstraps:
+            # Coalesce edited paths instead of buffering frames for each request.
+            fields = (
+                _pushed_fields(previous, data)
+                if operation == "update" and previous is not None
+                else {()}
+            )
+            for pending in self._pending_bootstraps.values():
+                pending.sensor_fields.setdefault(device_id, set()).update(fields)
+                if operation == "remove":
+                    pending.event_alarms = {
+                        key for key in pending.event_alarms if key[0] != device_id
+                    }
+                if isinstance(cursor, str):
+                    pending.cursor = cursor
+        self._rebuild_snapshot(cursor)
 
     def _process_alarm_event(
         self, action: Mapping[str, Any], data: Mapping[str, Any]
@@ -695,11 +802,13 @@ class PrivateProtectClient:
                 raise ProtectProtocolError("Unsupported alarm action schema")
             return
 
-        current = deepcopy(self._raw_alarm_events.get(event_id, {}))
+        cached = self._raw_alarm_events.get(event_id)
+        current = deepcopy(cached) if cached is not None else {}
         _deep_merge(current, data)
         event_type = current.get("type")
         if not isinstance(event_type, str) or event_type not in _ALARM_EVENT_TYPES:
-            self._raw_alarm_events.pop(event_id, None)
+            if cached is not None:
+                raise ProtectProtocolError("Unsupported alarm event type")
             return
 
         device_id = current.get("device")
@@ -724,45 +833,101 @@ class PrivateProtectClient:
             or end < 0
         ):
             raise ProtectProtocolError("Unsupported alarm end timestamp")
-        self._raw_alarm_events[event_id] = current
-        self._uncertain_alarm_metrics.discard((device_id, metric))
-        self._alarm_event_devices[event_id] = device_id
-        is_ended = operation == "remove" or current.get("end") is not None
-        if operation == "update" and not is_ended:
-            return
-
-        self._alarm_verified_at[(device_id, metric)] = monotonic()
-        self._verified_at[device_id] = monotonic()
+        key = (device_id, metric)
+        cursor = action.get("newUpdateId")
+        is_ended = operation == "remove" or end is not None
         alarm = ProtectAlarm(metric=metric, status=status, value=value)
         if is_ended:
-            previous = self._active_alarm_events.pop(event_id, None)
-            if previous is not None:
-                alarm = previous
-            self._raw_alarm_events.pop(event_id, None)
+            alarm = self._active_alarm_events.pop(event_id, None) or alarm
+            known_event = self._raw_alarm_events.pop(event_id, None) is not None
             self._alarm_event_devices.pop(event_id, None)
         else:
+            # A later end frame may contain only the event ID and timestamp.
+            self._raw_alarm_events[event_id] = {
+                "type": event_type,
+                "device": device_id,
+                "metadata": {
+                    "sensorType": metric,
+                    "status": status,
+                    "sensorValue": value,
+                },
+            }
+            self._alarm_event_devices[event_id] = device_id
+            if operation == "update":
+                return
             self._active_alarm_events[event_id] = alarm
-        self._refresh_alarm_state(device_id, alarm.metric, alarm)
-        self._state_revision += 1
-        self._rebuild_snapshot(action.get("newUpdateId"))
 
-    def _reconcile_bootstrap_alarms(self, snapshot: ProtectSnapshot) -> None:
+        for pending in self._pending_bootstraps.values():
+            pending.event_alarms.add(key)
+            if isinstance(cursor, str):
+                pending.cursor = cursor
+
+        now = monotonic()
+        self._verified_at[device_id] = now
+        if is_ended and key in self._uncertain_alarm_metrics:
+            if any(
+                owner == device_id
+                and self._alarm_details(self._raw_alarm_events[other])[0] == metric
+                for other, owner in self._alarm_event_devices.items()
+            ):
+                # Another expired source may still be active for the same metric.
+                self._rebuild_snapshot(cursor)
+                return
+            if known_event:
+                # The matching end is evidence of a transition from the known start.
+                self._alarm_states.setdefault(key, alarm)
+        self._uncertain_alarm_metrics.discard(key)
+        self._alarm_verified_at[key] = now
+        self._refresh_alarm_state(device_id, alarm.metric, alarm)
+        self._rebuild_snapshot(cursor)
+
+    def _reconcile_bootstrap_alarms(
+        self, snapshot: ProtectSnapshot, event_alarms: set[_AlarmKey]
+    ) -> None:
         """Replace transient sources with confirmed statuses after a full resync.
 
         Absence of a status is not proof an alarm ended. Expire orphaned sources
         silently and expose those metrics as unknown until confirmed again.
         """
         previous = self._alarm_states.copy()
-        self._alarm_verified_at.clear()
-        self._raw_alarm_events.clear()
-        self._active_alarm_events.clear()
-        self._alarm_event_devices.clear()
-        self._sensor_alarm_states.clear()
-        self._alarm_states.clear()
         device_ids = {device.id for device in snapshot.devices}
+        preserved = {key for key in event_alarms if key[0] in device_ids}
+        self._active_alarm_events = {
+            event_id: alarm
+            for event_id, alarm in self._active_alarm_events.items()
+            if (self._alarm_event_devices[event_id], alarm.metric) in preserved
+        }
+        # Keep a bounded history of event identities, independent of active state.
+        retired = [
+            event_id
+            for event_id in self._raw_alarm_events
+            if event_id not in self._active_alarm_events
+        ]
+        for event_id in retired[:-_RETIRED_ALARM_EVENT_LIMIT]:
+            self._raw_alarm_events.pop(event_id)
+            self._alarm_event_devices.pop(event_id, None)
+        for event_id, owner in tuple(self._alarm_event_devices.items()):
+            if owner not in device_ids:
+                self._raw_alarm_events.pop(event_id, None)
+                self._alarm_event_devices.pop(event_id)
+
+        self._sensor_alarm_states = {
+            key: alarm
+            for key, alarm in self._sensor_alarm_states.items()
+            if key in preserved
+        }
+        self._alarm_states = {key: previous[key] for key in preserved & previous.keys()}
+        now = monotonic()
+        self._alarm_verified_at = {
+            key: verified
+            for key, verified in self._alarm_verified_at.items()
+            if key[0] in device_ids
+            and now - verified < DATA_FRESHNESS_SECONDS
+            and (key in preserved or key not in previous)
+        }
         self._uncertain_alarm_metrics = {
             key
-            for key in self._uncertain_alarm_metrics | previous.keys()
+            for key in self._uncertain_alarm_metrics | (previous.keys() - preserved)
             if key[0] in device_ids
         }
         # Keep aggregate history only for metrics that can be confirmed.
@@ -804,7 +969,10 @@ class PrivateProtectClient:
             alarm = ProtectAlarm(metric, status, value)
             key = (device_id, metric)
             self._uncertain_alarm_metrics.discard(key)
-            self._alarm_verified_at[key] = monotonic()
+            # A verified status confirms device liveness, independently of a value.
+            now = monotonic()
+            self._verified_at[device_id] = now
+            self._alarm_verified_at[key] = now
             if status.casefold() not in _NON_ALARM_STATUSES:
                 self._sensor_alarm_states[key] = alarm
             else:
@@ -854,6 +1022,11 @@ class PrivateProtectClient:
 
     def _clear_device_alarm_states(self, device_id: str) -> None:
         """Discard all transient alarm bookkeeping for a removed device."""
+        self._verified_at.pop(device_id, None)
+        for timestamps in (self._metric_verified_at, self._alarm_verified_at):
+            for key in tuple(timestamps):
+                if key[0] == device_id:
+                    timestamps.pop(key)
         self._uncertain_alarm_metrics = {
             key for key in self._uncertain_alarm_metrics if key[0] != device_id
         }

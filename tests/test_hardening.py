@@ -238,9 +238,189 @@ async def test_push_during_bootstrap_never_rolls_back_confirmed_state(
             return payload
 
     session.get_response = ConcurrentResponse()
-    with pytest.raises(ProtectCannotConnect, match="changed during refresh"):
+    snapshot = await client.async_get_snapshot()
+    assert snapshot.devices[0].active_alarms[0].metric == "nox"
+    assert client.is_alarm_fresh("anonymous-air-quality-id", "nox")
+
+
+async def test_safety_bootstrap_refreshes_unpushed_metrics(load_fixture):
+    """Repeated concurrent pushes do not starve quiet metrics or other devices."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    payload["sensors"].append({**deepcopy(payload["sensors"][0]), "id": "second"})
+    payload["sensors"][0]["airQuality"]["nox"] = {"status": "neutral", "value": 42}
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    device_id = "anonymous-air-quality-id"
+
+    class ConcurrentResponse(FakeResponse):
+        async def json(self, **kwargs):
+            """Repeat a pushed value while the server returns other current fields."""
+            push(client, {"airQuality": {"nox": {"value": 42}}})
+            response = deepcopy(payload)
+            response["sensors"][0]["airQuality"]["nox"] = {
+                "status": "high",
+                "value": 150,
+            }
+            response["sensors"][0]["airQuality"]["co2"] = 700
+            return response
+
+    with patch("custom_components.unifi_air_quality.api.monotonic", return_value=100):
         await client.async_get_snapshot()
-    assert client.snapshot.devices[0].active_alarms[0].metric == "nox"
+    session.get_response = ConcurrentResponse()
+    for now in (160, 220, 280):
+        with patch(
+            "custom_components.unifi_air_quality.api.monotonic", return_value=now
+        ):
+            snapshot = await client.async_get_snapshot()
+            assert client.last_successful_refresh == now
+            devices = {device.id: device for device in snapshot.devices}
+            assert devices[device_id].raw["airQuality"]["co2"] == 700
+            assert devices[device_id].raw["airQuality"]["nox"] == {
+                "status": "high",
+                "value": 42,
+            }
+            assert client.is_measurement_fresh(device_id, "co2")
+            assert client.is_measurement_fresh("second", "co2")
+
+
+async def test_bootstrap_preserves_device_changes_and_cursor_from_pushes(load_fixture):
+    """A delayed bootstrap cannot resurrect a removed sensor or drop a new one."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    await client.async_get_snapshot()
+
+    class DiscoveryResponse(FakeResponse):
+        async def json(self, **kwargs):
+            """Deliver topology changes and a newer cursor before HTTP completes."""
+            push(client, {}, operation="remove")
+            push(
+                client,
+                {"type": "UP-AirQuality", "airQuality": {"co2": 450}},
+                operation="add",
+                id="second",
+            )
+            client._process_websocket_payload(
+                _frame(
+                    {
+                        "action": "update",
+                        "modelKey": "sensor",
+                        "id": "second",
+                        "newUpdateId": "stream-cursor",
+                    }
+                )
+                + _frame({"airQuality": {"co2": 500}})
+            )
+            return payload
+
+    session.get_response = DiscoveryResponse()
+    snapshot = await client.async_get_snapshot()
+    assert snapshot.last_update_id == "stream-cursor"
+    assert [device.id for device in snapshot.devices] == ["second"]
+    assert snapshot.devices[0].raw["airQuality"]["co2"] == 500
+
+
+@pytest.mark.parametrize("latest_scalar", [False, True])
+async def test_bootstrap_merges_replaced_metric_shape(latest_scalar, load_fixture):
+    """Preserve a pushed value across scalar and structured reading shapes."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    old = deepcopy(payload)
+    old["sensors"][0]["airQuality"]["co2"] = {"value": 612, "status": "neutral"}
+    session = FakeSession(FakeResponse(), FakeResponse(payload=old))
+    client = _client(session)
+    await client.async_get_snapshot()
+
+    class ShapeChangeResponse(FakeResponse):
+        async def json(self, **kwargs):
+            """Deliver changes while a response with the older shape is in flight."""
+            push(client, {"airQuality": {"co2": {"value": 700}}})
+            if latest_scalar:
+                push(client, {"airQuality": {"co2": 750}})
+            return payload
+
+    session.get_response = ShapeChangeResponse()
+    snapshot = await client.async_get_snapshot()
+    readings = snapshot.devices[0].raw["airQuality"]
+    assert readings["co2"] == (750 if latest_scalar else {"value": 700})
+    assert readings["aqi"] == 17
+
+
+async def test_bootstrap_expires_removed_device_alarm_identity(load_fixture):
+    """An alarm from a sensor removed by bootstrap does not retain device state."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    events = json.loads(load_fixture("websocket_alarm_events.json"))
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    await client.async_get_snapshot()
+
+    class RemovedDeviceResponse(FakeResponse):
+        async def json(self, **kwargs):
+            """Receive a last update from a sensor absent in bootstrap discovery."""
+            push(client, {"airQuality": {"co2": 750}})
+            started = events["extreme_started"]
+            client._process_websocket_payload(
+                _frame(started["action"]) + _frame(started["data"])
+            )
+            return payload | {"sensors": []}
+
+    session.get_response = RemovedDeviceResponse()
+    assert not (await client.async_get_snapshot()).devices
+    assert not client._raw_alarm_events
+    assert not client._alarm_event_devices
+    assert not client.is_alarm_fresh("anonymous-air-quality-id", "co2")
+
+
+async def test_stale_bootstrap_does_not_restart_an_ended_alarm(load_fixture):
+    """A confirmed end wins over older HTTP status while numeric data is refreshed."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    events = json.loads(load_fixture("websocket_alarm_events.json"))
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    await client.async_get_snapshot()
+    callback = MagicMock()
+    client.subscribe_alarm_events(callback)
+    started, ended = events["extreme_started"], events["extreme_ended"]
+    client._process_websocket_payload(
+        _frame(started["action"]) + _frame(started["data"])
+    )
+
+    class StaleAlarmResponse(FakeResponse):
+        async def json(self, **kwargs):
+            """Return a pre-end status after the matching end frame is received."""
+            client._process_websocket_payload(
+                _frame(ended["action"]) + _frame(ended["data"])
+            )
+            old = deepcopy(payload)
+            old["sensors"][0]["airQuality"]["co2"] = {"status": "high", "value": 950}
+            return old
+
+    session.get_response = StaleAlarmResponse()
+    snapshot = await client.async_get_snapshot()
+    device = snapshot.devices[0]
+    assert snapshot.last_update_id == ended["action"]["newUpdateId"]
+    assert device.raw["airQuality"]["co2"] == {"value": 950}
+    assert not device.active_alarms
+    assert [call.args[0].transition for call in callback.call_args_list] == [
+        "started",
+        "ended",
+    ]
+    assert client.is_alarm_fresh(device.id, "co2")
+    assert client.is_measurement_fresh(device.id, "co2")
+
+
+async def test_status_only_push_restores_alarm_without_reviving_reading(load_fixture):
+    """A confirmed status restores an alarm while its old value remains stale."""
+    payload = json.loads(load_fixture("bootstrap_nox.json"))
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    device_id = "anonymous-air-quality-id"
+    with patch("custom_components.unifi_air_quality.api.monotonic", return_value=100):
+        await client.async_get_snapshot()
+    with patch("custom_components.unifi_air_quality.api.monotonic", return_value=221):
+        assert not client.is_device_fresh(device_id)
+        push(client, {"airQuality": {"nox": {"status": "high"}}})
+        assert client.is_device_fresh(device_id)
+        assert client.is_alarm_fresh(device_id, "nox")
+        assert not client.is_measurement_fresh(device_id, "nox")
 
 
 async def test_out_of_order_http_responses_keep_newer_snapshot(load_fixture):

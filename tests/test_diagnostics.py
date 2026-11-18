@@ -62,7 +62,13 @@ async def test_config_entry_diagnostics(hass) -> None:
         (ProtectAlarm("co2", "high", 1200),),
     )
     snapshot = ProtectSnapshot("console", "Private", "6.2", "update", (device,))
-    client = MagicMock(websocket_connected=True)
+    client = MagicMock(
+        websocket_connected=True,
+        protocol_error=False,
+        authentication_failed=False,
+        last_successful_refresh=None,
+    )
+    client.diagnostic_freshness.return_value = {"fresh": True}
     runtime = UnifiAirQualityRuntimeData(client, SimpleNamespace(data=snapshot))
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -77,5 +83,15 @@ async def test_config_entry_diagnostics(hass) -> None:
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
     assert diagnostics["transport"]["air_quality_device_count"] == 1
     assert diagnostics["transport"]["active_alarm_count"] == 1
-    assert diagnostics["devices"] == [{}]
+    assert len(diagnostics["devices"]) == 1
+    assert diagnostics["devices"][0]["id"].startswith("<export:")
+    assert diagnostics["devices"][0]["freshness"] == {"fresh": True}
     assert diagnostics["config_entry"][CONF_PASSWORD] == "**REDACTED**"
+
+
+def test_diagnostic_aliases_use_the_effective_canonical_reading() -> None:
+    """Old duplicate aliases cannot appear fresh beside a newer canonical value."""
+    raw = {"airQuality": {"pm2p5": 3, "pm2_5": 99, "vapeIndex": 4}}
+    sanitized = sanitize_raw(raw)
+    assert sanitized == {"airQuality": {"pm2p5": 3, "vape": 4}}
+    assert raw["airQuality"]["pm2_5"] == 99

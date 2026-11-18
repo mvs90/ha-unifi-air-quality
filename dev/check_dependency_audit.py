@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from datetime import date
@@ -69,7 +70,20 @@ def main() -> int:
     if failures:
         print("Untriaged or expired dependency findings:\n" + "\n".join(failures))
         return 1
-    print("Dependency audit passed; all upstream exceptions remain scoped and current")
+    inventory = sorted(
+        (package["name"], package["version"])
+        for package in report["dependencies"]
+        if not package.get("skip_reason")
+    )
+    supported_ha = json.loads(Path("hacs.json").read_text())["homeassistant"]
+    if ("homeassistant", supported_ha) not in inventory:
+        print("Dependency inventory does not cover the declared HA baseline")
+        return 1
+    digest = hashlib.sha256(json.dumps(inventory).encode()).hexdigest()
+    print(
+        f"Dependency audit passed: HA {supported_ha}, {len(inventory)} packages; "
+        f"inventory SHA-256 {digest}; scoped exceptions current"
+    )
     return 0
 
 

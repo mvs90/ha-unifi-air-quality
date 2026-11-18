@@ -5,9 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.core import callback
+from homeassistant.core import Event, callback
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.device_registry import (
+    EVENT_DEVICE_REGISTRY_UPDATED,
+    DeviceInfo,
+)
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -30,7 +33,8 @@ def async_setup_dynamic_entities(
     """Reconcile each platform using its existing coordinator subscription.
 
     Keep entities on removal so registry names, IDs and history survive re-pairing.
-    The local set only records entities submitted by this platform during setup.
+    Explicit UI removal forgets the submitted identity so re-adoption can create
+    entities again. Ordinary Protect disappearance keeps registry metadata.
     """
     coordinator = entry.runtime_data.coordinator
     known: set[str] = set()
@@ -50,6 +54,23 @@ def async_setup_dynamic_entities(
                 ]
             )
 
+    @callback
+    def forget_removed(event: Event) -> None:
+        """Forget only devices explicitly removed from this entry's HA registry."""
+        if event.data["action"] != "remove":
+            return
+        removed = event.data["device"]
+        if removed["config_entry_id"] != entry.entry_id:
+            return
+        known.difference_update(
+            identifier
+            for domain, identifier in removed["identifiers"]
+            if domain == DOMAIN
+        )
+
+    entry.async_on_unload(
+        coordinator.hass.bus.async_listen(EVENT_DEVICE_REGISTRY_UPDATED, forget_removed)
+    )
     entry.async_on_unload(coordinator.async_add_listener(discover))
     discover()
 

@@ -4,13 +4,23 @@ Please report security issues privately through GitHub's security advisory
 feature. Do not open a public issue containing credentials or unredacted
 diagnostics.
 
-Only the latest release is supported. This integration is intended for local
-network access to Protect and must not be used to expose a console publicly.
+Security fixes target the latest accepted **pinned commit** of fork version
+0.6.0; unmerged candidates and moving-branch downloads are not reproducible
+supported builds. Record the full commit SHA alongside the installed manifest
+version, as described in [the install/rollback policy](docs/install-upgrade-rollback.md).
+No published fork release is claimed until an immutable release is created.
+This integration is intended for local network access to Protect and must not
+be used to expose a console publicly.
 
 ## Automated checks and dependency ownership
 
 PRs and pushes run Ruff's security (`S`) rules, secret scanning, and a
-`pip-audit` check of the actually resolved current Home Assistant/test environment.
+`pip-audit` check of the actually resolved **Home Assistant 2026.10.4**/test
+environment. This is the sole advertised/tested baseline and the HACS minimum;
+older 2026.8.x support was withdrawn because its aiohttp, cryptography, PyJWT and
+uv advisories exceeded the scoped current-baseline policy. Upgrade HA rather
+than adding broad exceptions. Each successful audit logs the HA version, number
+of audited packages and SHA-256 of the sorted package/version inventory.
 The weekly Security run checks for newly published advisories. Synthetic S307 and
 AWS-key samples verify both scanners can fail. Logs contain advisory IDs and
 package versions; secret values and full audit reports are not published.
@@ -43,3 +53,35 @@ Review each newly detected finding; never regenerate and accept the baseline
 without inspection. Ruff suppressions are limited to pytest assertions/synthetic
 credentials and individual developer-runner subprocess calls with explicit argv
 and no shell. Real credentials must never enter source control.
+
+## Commit-history secret scanning
+
+The Security job fetches full history with a read-only token and no persisted
+credentials. It retains the tracked-tree scan and scans every changed text blob
+in PR and push commit ranges, including an intermediate secret later removed.
+PR/push scans use the **base commit's** reviewed hash baseline, so changing that
+baseline in the same PR cannot self-approve a secret. New inline allowlist pragmas
+also cannot hide a value: only exact file/type/hash matches already approved
+inline in the trusted base are accepted. Baseline files are scanned too; only
+valid SHA-1 `hashed_secret` metadata is neutralized. Hex-entropy findings matching
+an exact commit ID already reachable from the trusted base are recognized as
+public Git references; other detectors still apply, and new PR commit IDs or
+unknown hex values receive no such exemption. Release, manual and weekly
+runs scan the accepted head's full reachable history, using its reviewed
+baseline. Binary and non-UTF-8 assets are outside the text scanner; excessive text blobs or
+scanner/Git failures fail the check instead of silently passing. The history
+self-test creates two synthetic commits with an invalid AWS-shaped key, deletes
+it before the final tree, and requires detection. Logs reveal only the commit,
+detector and line number; secret values, file names and raw detector output are
+not published. The four required check names and activation procedure are in
+[the maintainer ruleset guide](docs/maintainer-ruleset.md).
+
+If a real credential is committed, revoke/rotate it immediately; removing its
+current line is insufficient. Stop publication, privately notify the maintainer,
+identify affected commits/releases and follow GitHub's sensitive-data removal
+procedure with collaborators. Rewrite or remove affected refs only through the
+explicitly authorized incident process; coordinate any required fresh clones.
+Re-run tree and history scans before resuming. Never copy a credential into an
+issue, review comment, CI artifact or scanner allowlist. An exact harmless test
+fixture may be reviewed separately as non-secret; that is not an exception for
+a real credential.

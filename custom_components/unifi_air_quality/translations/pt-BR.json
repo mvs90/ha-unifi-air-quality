@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "Somente o nome do host ou endereço IP, sem https://.",
-          "verify_ssl": "Verify the console identity (recommended). Disabling verification allows interception of credentials and readings."
+          "verify_ssl": "Verifique a identidade do console (recomendado). Desativar a verificação permite a interceptação de credenciais e medições."
         }
       },
       "reauth_confirm": {
@@ -23,19 +23,34 @@
         "data": {
           "password": "Senha"
         }
+      },
+      "reconfigure": {
+        "title": "Atualizar a conexão com o UniFi Protect",
+        "description": "Valide o novo endereço ou certificado do mesmo console. Os dispositivos e nomes existentes serão mantidos.",
+        "data": {
+          "host": "Host",
+          "port": "Porta",
+          "verify_ssl": "Verificar o certificado TLS"
+        },
+        "data_description": {
+          "host": "Somente o nome do host ou endereço IP, sem https://.",
+          "verify_ssl": "Verifique a identidade do console (recomendado). Desativar a verificação permite a interceptação de credenciais e medições."
+        }
       }
     },
     "error": {
       "cannot_connect": "Não foi possível conectar ao UniFi Protect.",
       "invalid_auth": "O nome de usuário ou a senha são inválidos.",
       "invalid_response": "O Protect retornou uma resposta não compatível.",
-      "tls_error": "The console TLS certificate is not trusted. Use a certificate issued by a CA trusted by Home Assistant and a matching hostname.",
-      "unknown": "Erro inesperado. Verifique os registros do Home Assistant."
+      "tls_error": "O certificado TLS do console não é confiável. Use um certificado emitido por uma autoridade certificadora em que o Home Assistant confie e um nome de host correspondente ao certificado.",
+      "unknown": "Erro inesperado. Verifique os registros do Home Assistant.",
+      "different_console": "O novo endereço pertence a outro console Protect. Nenhuma alteração foi salva."
     },
     "abort": {
       "already_configured": "Este console Protect já está configurado.",
       "reauth_successful": "A nova autenticação foi concluída com sucesso.",
-      "unique_id_mismatch": "As credenciais pertencem a outro console Protect."
+      "unique_id_mismatch": "As credenciais pertencem a outro console Protect.",
+      "reconfigure_successful": "A conexão existente com o Protect foi atualizada."
     }
   },
   "entity": {

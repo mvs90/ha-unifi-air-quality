@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "Pouze název hostitele nebo IP adresa, bez https://.",
-          "verify_ssl": "Verify the console identity (recommended). Disabling verification allows interception of credentials and readings."
+          "verify_ssl": "Ověřovat identitu konzole (doporučeno). Vypnutí ověřování umožňuje zachytit přihlašovací údaje a naměřené hodnoty."
         }
       },
       "reauth_confirm": {
@@ -23,19 +23,34 @@
         "data": {
           "password": "Heslo"
         }
+      },
+      "reconfigure": {
+        "title": "Upravit připojení k UniFi Protect",
+        "description": "Ověřte novou adresu nebo certifikát pro tutéž konzoli. Stávající zařízení a názvy zůstanou zachovány.",
+        "data": {
+          "host": "Hostitel",
+          "port": "Port",
+          "verify_ssl": "Ověřit certifikát TLS"
+        },
+        "data_description": {
+          "host": "Pouze název hostitele nebo IP adresa, bez https://.",
+          "verify_ssl": "Ověřovat identitu konzole (doporučeno). Vypnutí ověřování umožňuje zachytit přihlašovací údaje a naměřené hodnoty."
+        }
       }
     },
     "error": {
       "cannot_connect": "Připojení k UniFi Protect se nezdařilo.",
       "invalid_auth": "Uživatelské jméno nebo heslo není platné.",
       "invalid_response": "Protect vrátil nepodporovanou odpověď.",
-      "tls_error": "The console TLS certificate is not trusted. Use a certificate issued by a CA trusted by Home Assistant and a matching hostname.",
-      "unknown": "Neočekávaná chyba. Zkontrolujte protokoly Home Assistant."
+      "tls_error": "Certifikát TLS konzole není důvěryhodný. Použijte certifikát vydaný certifikační autoritou, které Home Assistant důvěřuje, a odpovídající název hostitele.",
+      "unknown": "Neočekávaná chyba. Zkontrolujte protokoly Home Assistant.",
+      "different_console": "Nová adresa patří jiné konzoli Protect. Žádné změny nebyly uloženy."
     },
     "abort": {
       "already_configured": "Tato konzole Protect je již nakonfigurována.",
       "reauth_successful": "Opětovné ověření bylo úspěšné.",
-      "unique_id_mismatch": "Přihlašovací údaje patří jiné konzoli Protect."
+      "unique_id_mismatch": "Přihlašovací údaje patří jiné konzoli Protect.",
+      "reconfigure_successful": "Stávající připojení k Protect bylo aktualizováno."
     }
   },
   "entity": {

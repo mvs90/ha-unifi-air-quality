@@ -16,7 +16,7 @@ MQTT, a cloud account, and an additional bridge are not required.
 
 ## Current milestone: measurements, controls, and alarm triggers
 
-Version `0.5.4` can:
+Fork version `0.6.0` can:
 
 - configure a local Protect console through the Home Assistant UI;
 - authenticate with a dedicated local Protect user;
@@ -115,19 +115,30 @@ documented units nor supported ranges for them.
 
 ## Installation
 
+### Supported pinned installation
+
+Use an accepted **full commit SHA** of this maintained
+`Daniel-Dietz/ha-unifi-air-quality` fork for a reproducible installation. The
+manifest and project identify the fork as **0.6.0**. No published fork release or
+tag is implied. [Install, migrate and roll back](docs/install-upgrade-rollback.md)
+gives the complete sequence, build identification and disposable HA test evidence.
+Home Assistant **2026.10.4** is the minimum tested/audited baseline.
+
+For a fresh manual install, stage the complete component at the selected SHA,
+record its `BUILD_COMMIT`, stop HA, copy `custom_components/unifi_air_quality`
+into the configuration directory, and restart. Then add **UniFi Protect Air
+Quality** under **Settings → Devices & services**. For an existing installation,
+replace the package while retaining the config entry and registry data; follow
+the migration guide before changing package sources.
+
 ### HACS custom repository
 
-This is the maintained `Daniel-Dietz/ha-unifi-air-quality` fork. Add
-`https://github.com/Daniel-Dietz/ha-unifi-air-quality` as a custom repository
-of type **Integration** in HACS, install it, and restart Home Assistant.
-Then open **Settings → Devices & services → Add integration** and select
-**UniFi Protect Air Quality**. Preserve your existing integration entry when
-switching to this fork; entity IDs and saved TLS choices remain unchanged.
-
-### Manual installation
-
-For manual installation, copy `custom_components/unifi_air_quality` into the
-same directory under your Home Assistant configuration directory and restart.
+The fork can be added as an **Integration** custom repository using
+`https://github.com/Daniel-Dietz/ha-unifi-air-quality`. Until immutable GitHub
+releases are published, HACS downloads the moving default branch; use the pinned
+procedure above for the supported reproducible deployment. Upstream and fork
+share the same component directory, so only one package source may manage it.
+Do not delete the HA config entry when switching package sources.
 
 Setup dialogs, entity names, and selection options are translated into English,
 German, French, Spanish, Italian, Dutch, Polish, Portuguese (Portugal and Brazil),
@@ -162,7 +173,11 @@ certificate issued by a CA trusted by Home Assistant and a hostname matching
 its SAN. For a private CA, install/trust that CA in the Home Assistant runtime
 using your deployment's supported CA mechanism, then verify access before setup.
 Do not merely trust a certificate in a browser: HA's runtime must trust it.
-Existing entries retain their explicit TLS choice. Turning verification off is
+Existing entries retain their explicit TLS choice. Use **Reconfigure** on the
+existing integration entry to change its host, port or TLS verification. The
+validated destination must return the same console ID before the saved entry is
+updated and reloaded; entity IDs, custom names and options are preserved.
+Turning verification off is
 an explicit exception: it allows network attackers to intercept credentials,
 session cookies and readings. Prefer a trusted local-CA certificate.
 
@@ -179,6 +194,9 @@ overwrite a newer push or completed refresh.
 ## Diagnostics
 
 After setup, open the integration's menu and select **Download diagnostics**.
+The export reports relative ages and freshness for each device, measurement and
+alarm, plus authentication, protocol and polling/stream health. See the
+[diagnostic health guide](docs/diagnostic-health.md) for interpretation.
 The export includes only current allowlisted measurements, selected settings,
 connection/protocol health and numeric Protect/device firmware versions. It omits
 hostnames, credentials, cookies, tokens, MACs, serials, names, history and unknown
@@ -268,6 +286,10 @@ and report changed schemas with reviewed diagnostic data.
 
 ## Development
 
+Maintainers follow the [acceptance and branch-protection workflow](docs/maintainer-ruleset.md).
+The supplied ruleset must be applied and verified in GitHub; committing its JSON
+does not activate repository protection.
+
 Requirements: Docker and Python 3.14.2 or newer for the current test environment.
 
 ```bash
@@ -285,9 +307,30 @@ docker compose -f dev/compose.yaml restart homeassistant
 docker compose -f dev/compose.yaml logs -f homeassistant
 ```
 
-Home Assistant is available at <http://localhost:8123>. The image and default
-test dependencies are pinned to `2026.10.4`. CI also checks `2026.8.0` (the
-declared minimum) and the previous `2026.8.1` baseline with matching test helpers.
+Home Assistant is available only on <http://127.0.0.1:8123>. The
+development Compose stack binds port 8123 to **loopback**, not LAN interfaces,
+to avoid exposing an unfinished onboarding screen. For remote development,
+use an authenticated SSH tunnel to port 8123. Explicitly publishing the port
+on a LAN interface is an operator opt-in and must not expose onboarding
+to untrusted networks. For example, forward a local port with
+`ssh -L 18123:127.0.0.1:8123 developer@dev-host` and browse
+`http://127.0.0.1:18123`. To deliberately publish on a trusted LAN instead, edit
+the Compose host address explicitly and review that host's firewall/onboarding
+state. Keep this development stack separate from production.
+
+Validate the effective publish address without starting containers:
+
+```bash
+docker compose -f dev/compose.yaml config --format json > /tmp/compose.json
+python dev/check_compose_binding.py /tmp/compose.json
+python dev/run_migration_smoke.py
+```
+
+The image, dependency audit and test environment all use the supported
+minimum **Home Assistant 2026.10.4**. Older 2026.8.x installations are not
+supported after the security-baseline review (#25): their resolved dependencies
+contained upstream advisories not covered by the reviewed current-version
+exception policy. Upgrade Home Assistant before upgrading this integration.
 
 Run the full suite in a disposable Home Assistant container, without mounting
 live configuration or publishing any ports:
@@ -312,7 +355,12 @@ combinations.
 
 ## Removal
 
-Remove the config entry under **Settings → Devices & services**, then uninstall
+For a permanently unpaired sensor, use the device page's **Delete** action. The
+integration verifies a new Protect inventory before allowing removal. A sensor
+that is merely offline remains protected, and a re-adopted sensor is discovered
+again. See [device cleanup and rediscovery](docs/device-lifecycle.md).
+
+To remove the entire integration, remove the config entry under **Settings → Devices & services**, then uninstall
 the repository in HACS and restart Home Assistant.
 
 ## Known limitations
@@ -337,9 +385,11 @@ direct Home Assistant integration possible.
 This project is not affiliated with Ubiquiti Inc. UniFi and UniFi Protect are
 trademarks of their respective owner.
 
-## Support this project
+## Support upstream development
 
-If you find this project useful, you can support its development and maintenance
-with a voluntary contribution via [GitHub Sponsors](https://github.com/sponsors/mvs90) or
-[PayPal](https://www.paypal.me/mvs90).
-Thank you for your support!
+This fork retains the sponsorship links of **mvs90**, the author of the
+[original integration](https://github.com/mvs90/ha-unifi-air-quality).
+Contributions through [GitHub Sponsors](https://github.com/sponsors/mvs90),
+[PayPal](https://www.paypal.me/mvs90), or this repository's **Sponsor** button
+support **mvs90 and upstream development**. They do not go to the fork maintainer,
+Daniel-Dietz. The original MIT license and copyright attribution remain intact.

@@ -587,6 +587,43 @@ class PrivateProtectClient:
         """Expose terminal authentication health without revealing session data."""
         return self._auth_failed
 
+    def diagnostic_freshness(self, device_id: str) -> dict[str, Any]:
+        """Return relative verification ages and flags without device identifiers.
+
+        A live transport is not proof that every cached metric is current. Use
+        each metric's own verification timestamp and retain its age even when
+        authentication or protocol health makes the reading unavailable.
+        """
+        now = monotonic()
+
+        def age(timestamp: float | None) -> float | None:
+            """Convert an internal monotonic timestamp to a safe relative age."""
+            return None if timestamp is None else round(max(0.0, now - timestamp), 1)
+
+        metrics = sorted({_canonical_metric(metric) for metric in _MEASUREMENT_KEYS})
+        return {
+            "age_seconds": age(self._verified_at.get(device_id)),
+            "fresh": self.is_device_fresh(device_id),
+            "measurements": {
+                metric: {
+                    "age_seconds": age(
+                        self._metric_verified_at.get((device_id, metric))
+                    ),
+                    "fresh": self.is_measurement_fresh(device_id, metric),
+                }
+                for metric in metrics
+            },
+            "alarms": {
+                metric: {
+                    "age_seconds": age(
+                        self._alarm_verified_at.get((device_id, metric))
+                    ),
+                    "fresh": self.is_alarm_fresh(device_id, metric),
+                }
+                for metric in metrics
+            },
+        }
+
     def is_alarm_fresh(self, device_id: str, metric: str) -> bool:
         """Require a recent confirmed status/event for this individual alarm."""
         verified = self._alarm_verified_at.get((device_id, metric))

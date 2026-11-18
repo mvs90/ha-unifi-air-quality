@@ -69,7 +69,7 @@ def test_origin_rejects_noncanonical_port(port):
             host="protect.local",
             port=port,
             username="user",
-            password="synthetic",
+            password="synthetic",  # pragma: allowlist secret -- test fixture only
             verify_ssl=True,
         )
 

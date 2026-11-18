@@ -74,7 +74,8 @@ async def test_incomplete_resync_expires_orphan_without_false_end(load_fixture):
     assert callback.call_count == 1
     push(client, {"airQuality": {"co2": {"status": "neutral", "value": 600}}})
     assert not client.snapshot.devices[0].uncertain_alarm_metrics
-    assert callback.call_count == 1
+    assert callback.call_count == 2
+    assert callback.call_args.args[0].transition == "ended"
 
 
 @pytest.mark.parametrize("event_count", [1, 2])
@@ -108,6 +109,77 @@ async def test_partial_alarm_ends_after_sensor_bootstrap(event_count, load_fixtu
     assert client.is_alarm_fresh("anonymous-air-quality-id", "co2")
     await client.async_get_snapshot()
     assert client.is_alarm_fresh("anonymous-air-quality-id", "co2")
+
+
+@pytest.mark.parametrize("resolution", ["older_end", "authoritative_normal"])
+async def test_retired_alarm_prevents_false_clear_after_new_event(
+    resolution, load_fixture
+):
+    """An unknown old event cannot be cleared by a later source ending."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    events = json.loads(load_fixture("websocket_alarm_events.json"))
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    await client.async_get_snapshot()
+    callback = MagicMock()
+    client.subscribe_alarm_events(callback)
+    started, ended = events["extreme_started"], events["extreme_ended"]
+
+    def send(event, event_id):
+        """Deliver an event with a known, independent source identifier."""
+        client._process_websocket_payload(
+            _frame(event["action"] | {"id": event_id}) + _frame(event["data"])
+        )
+
+    send(started, "older")
+    assert callback.call_count == 1
+    await client.async_get_snapshot()
+    assert client.snapshot.devices[0].uncertain_alarm_metrics == ("co2",)
+
+    send(started, "newer")
+    count_before_end = callback.call_count
+    send(ended, "newer")
+    assert callback.call_count == count_before_end
+    assert client.snapshot.devices[0].uncertain_alarm_metrics == ("co2",)
+    assert not client.snapshot.devices[0].active_alarms
+
+    if resolution == "older_end":
+        send(ended, "older")
+    else:
+        push(client, {"airQuality": {"co2": {"status": "neutral", "value": 600}}})
+    assert client.snapshot.devices[0].uncertain_alarm_metrics == ()
+    assert callback.call_count == count_before_end + 1
+    assert callback.call_args.args[0].transition == "ended"
+
+
+async def test_pruned_old_alarm_never_fabricates_clear(load_fixture):
+    """Pruning an unresolved event ID cannot make a newer end definitive."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    events = json.loads(load_fixture("websocket_alarm_events.json"))
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    await client.async_get_snapshot()
+    callback = MagicMock()
+    client.subscribe_alarm_events(callback)
+    started, ended = events["extreme_started"], events["extreme_ended"]
+
+    def send(event, event_id):
+        """Send a confirmed event frame with the selected source ID."""
+        client._process_websocket_payload(
+            _frame(event["action"] | {"id": event_id}) + _frame(event["data"])
+        )
+
+    send(started, "pruned")
+    send(started, "retained")
+    with patch("custom_components.unifi_air_quality.api._RETIRED_ALARM_EVENT_LIMIT", 1):
+        await client.async_get_snapshot()
+    assert ("anonymous-air-quality-id", "co2") in client._unresolvable_alarm_metrics
+    send(started, "newer")
+    count_before_end = callback.call_count
+    send(ended, "newer")
+    assert callback.call_count == count_before_end
+    assert client.snapshot.devices[0].uncertain_alarm_metrics == ("co2",)
+    push(client, {"airQuality": {"co2": {"status": "normal", "value": 600}}})
+    assert callback.call_count == count_before_end + 1
+    assert callback.call_args.args[0].transition == "ended"
 
 
 async def test_expired_event_metadata_remains_bounded(load_fixture):

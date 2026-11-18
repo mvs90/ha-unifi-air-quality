@@ -15,10 +15,29 @@ from custom_components.unifi_air_quality.api import (
     ProtectInvalidAuth,
     ProtectPermissionDenied,
     ProtectProtocolError,
+    ProtectStreamPermissionDenied,
 )
 from custom_components.unifi_air_quality.models import ProtectAlarm, ProtectAlarmEvent
 
 HEADER = struct.Struct("!bbbbi")
+
+
+class FakeResponseStream:
+    """Expose the same incremental byte semantics as aiohttp's response stream."""
+
+    def __init__(self, response):
+        """Keep the response's synthetic payload and cursor in one test stream."""
+        self._response = response
+        self._data = None
+        self._offset = 0
+
+    async def read(self, size):
+        """Read at most size bytes and trigger any injected response race once."""
+        if self._data is None:
+            self._data = json.dumps(await self._response.json()).encode()
+        data = self._data[self._offset : self._offset + size]
+        self._offset += len(data)
+        return data
 
 
 class FakeResponse:
@@ -28,9 +47,11 @@ class FakeResponse:
         self._payload = payload
         self.headers = CIMultiDict(headers or {})
         self._error = error
+        self.content = FakeResponseStream(self)
 
     async def __aenter__(self):
-        """Implement the test double's aenter protocol."""
+        """Reset a new response body's stream for each synthetic HTTP call."""
+        self.content = FakeResponseStream(self)
         return self
 
     async def __aexit__(self, *args):
@@ -757,11 +778,12 @@ async def test_websocket_maps_auth_handshake_error(status) -> None:
         status=status,
         message="unauthorized",
     )
-    session = FakeSession(FakeResponse(), FakeResponse(), error)
+    session = FakeSession(FakeResponse(), FakeResponse(status=401), error)
     client = _client(session)
     client._headers["Cookie"] = "expired"
 
-    with pytest.raises(ProtectInvalidAuth):
+    expected = ProtectInvalidAuth if status == 401 else ProtectStreamPermissionDenied
+    with pytest.raises(expected):
         await client._websocket_once()
 
 
@@ -915,7 +937,7 @@ async def test_patch_retry_failure_does_not_change_local_state(load_fixture):
     callback.assert_not_called()
 
 
-@pytest.mark.parametrize("status", [401, 403])
+@pytest.mark.parametrize("status", [401])
 async def test_expired_websocket_session_renews_and_reconnects(status):
     """Verify expired websocket session renews and reconnects."""
     rejected = WSServerHandshakeError(MagicMock(), (), status=status)
@@ -968,7 +990,8 @@ async def test_concurrent_expired_requests_share_one_session_renewal(load_fixtur
 
     assert all(snapshot.devices for snapshot in snapshots)
     assert len(session.post_calls) == 1
-    assert len(session.get_calls) == 4
+    # A late rejected request reuses the newer confirmed result without retrying.
+    assert len(session.get_calls) == 3
 
 
 async def test_stale_request_cannot_clear_a_newer_session():

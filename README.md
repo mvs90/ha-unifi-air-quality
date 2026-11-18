@@ -202,8 +202,12 @@ reevaluates availability every five seconds, so stale readings become unavailabl
 within **125 seconds**. A connected WebSocket alone is insufficient evidence of
 fresh measurements. Device-offline flags still take effect immediately.
 Brief transport outages preserve only still-fresh data; successful refreshes
-or numeric/status pushes restore it automatically. Protocol/authentication failures
-make the affected integration unavailable immediately.
+or numeric/status pushes restore it automatically. Current-session REST credential
+rejections cause reauthentication and availability loss; superseded request
+failures cannot override a newer verified response. WebSocket-only 401/403
+denials are degraded update-stream health, not proof that monitoring credentials
+are invalid: the periodic REST snapshot continues and stale values expire
+normally. Real protocol failures still fail closed.
 
 Reconnects refresh bootstrap before following its cursor. Current measurement
 statuses replace transient alarm caches, clearing missed end events. An orphaned
@@ -223,12 +227,29 @@ New devices are discovered on all seven entity platforms during push/refresh
 without reload. Removed devices' entities remain unavailable and retain registry
 settings/history; reappearance reuses the same IDs and user names.
 
+All authenticated HTTP requests use the configured canonical HTTPS host and
+port (DNS, IPv4 and IPv6 supported), refuse redirects and impose **25-second
+total / 10-second connect / 15-second read** deadlines. WebSocket handshakes
+have a **12-second opening deadline**, never follow redirects, and continue
+bounded reconnects on channel-specific denials. Protect sensor IDs must be
+single safe URL path segments. Controls compare verified server read-back
+using the expected wire type: a boolean cannot be confirmed by 0/1, missing is
+not the same as explicit null, and equivalent finite integer/float values
+are accepted. Public alarm keys keep the existing canonical names
+(pm1p0, pm2p5, pm4p0, pm10p0 and vape), while older wire aliases
+(pm1, pm2_5, pm4, pm10 and vapeIndex) are normalized in readings,
+freshness and events without entity-ID changes.
+
 The undocumented bootstrap, sensor PATCH and two-frame WebSocket APIs may change
 with any Protect/firmware upgrade. Known required schema/status changes produce
 an actionable HA update error and sanitized diagnostics instead of false alerts.
 Unknown optional fields are tolerated. Frames are limited to **1 MiB wire data
 per frame**, **2 MiB decompressed per frame**, and two frames per message; bounded
-zlib expansion rejects bombs, truncation and concatenated streams. Incompatible
+zlib expansion rejects bombs, truncation and concatenated streams.
+Full bootstrap HTTP JSON bodies have a **16 MiB decoded-byte limit** (including
+responses with no Content-Length). Invalid/mixed or duplicate-ID inventories
+raise an actionable protocol error without replacing the previous registry.
+A genuinely empty inventory and unknown valid sensor models remain supported. Incompatible
 frames trigger a controlled reconnect/resync.
 
 The regression fixtures cover the existing scalar Protect variant (fixture

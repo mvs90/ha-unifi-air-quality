@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
+import json
 import logging
 import math
+import re
 from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -18,6 +21,7 @@ from aiohttp import (
     ClientResponseError,
     ClientSession,
     ClientSSLError,
+    ClientTimeout,
     ClientWSTimeout,
     WSMsgType,
     WSServerHandshakeError,
@@ -41,6 +45,10 @@ _SENSOR_PATH = "/proxy/protect/api/sensors/{device_id}"
 
 _ALARM_EVENT_TYPES = {"sensorExtremeValues", "sensorVape"}
 _RETIRED_ALARM_EVENT_LIMIT = 256
+# Total bounded decoded JSON; a full Protect inventory can exceed WebSocket frames.
+MAX_BOOTSTRAP_BYTES = 16 * 1024 * 1024
+_HTTP_TIMEOUT = ClientTimeout(total=25, connect=10, sock_connect=10, sock_read=15)
+_WS_OPEN_TIMEOUT_SECONDS = 12
 _NON_ALARM_STATUSES = frozenset({"good", "neutral", "normal", "safe"})
 _ALARM_STATUSES = frozenset({"high", "low", "critical", "detected"})
 _MEASUREMENT_KEYS = frozenset(
@@ -90,8 +98,16 @@ class ProtectTlsError(ProtectCannotConnect):
     """The console TLS certificate is not trusted."""
 
 
+class ProtectStreamPermissionDenied(ProtectCannotConnect):
+    """REST monitoring is available but Protect denied the update channel."""
+
+
 class ProtectProtocolError(ProtectApiError):
     """Protect returned an unexpected payload."""
+
+
+class _SupersededBootstrap(ProtectApiError):
+    """An old request was refused after newer verified state was published."""
 
 
 type _FieldPath = tuple[str, ...]
@@ -108,12 +124,38 @@ class _BootstrapPushes:
 
 
 def _host_for_url(host: str) -> str:
-    """Validate a host and bracket IPv6 literals for HTTPS URLs."""
-    # A host is not a URL: reject paths before constructing credential requests.
-    normalized = host.strip().strip("[]")
-    if not normalized or "://" in normalized or "/" in normalized:
+    """Allow a canonical hostname or IP literal, not an injected origin."""
+    if not isinstance(host, str):
         raise ProtectProtocolError("Host must be a hostname or IP address")
-    return f"[{normalized}]" if ":" in normalized else normalized
+    address = host.strip()
+    if address.startswith("[") and address.endswith("]"):
+        address = address[1:-1]
+    if not address or any(c in address for c in "/\\@%?#[]"):
+        raise ProtectProtocolError("Host must be a hostname or IP address")
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        if ":" in address or re.fullmatch(r"\d+(?:\.\d+){3}", address):
+            raise ProtectProtocolError("Invalid IP address or hostname") from None
+        try:
+            address = address.encode("idna").decode("ascii").lower().rstrip(".")
+        except UnicodeError as err:
+            raise ProtectProtocolError("Invalid hostname") from err
+        if len(address) > 253 or not all(
+            re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+            for label in address.split(".")
+        ):
+            raise ProtectProtocolError("Invalid hostname") from None
+        return address
+    return f"[{ip.compressed}]" if ip.version == 6 else str(ip)
+
+
+def _canonical_metric(metric: str) -> str:
+    """Unify the old wire names under the existing HA entity payload keys."""
+    return next(
+        (canonical for canonical, old in MEASUREMENT_ALIASES.items() if metric == old),
+        metric,
+    )
 
 
 def _deep_merge(target: dict[str, Any], update: Mapping[str, Any]) -> None:
@@ -162,13 +204,24 @@ def _copy_pushed_fields(
 def _contains_update(confirmed: Mapping[str, Any], update: Mapping[str, Any]) -> bool:
     """Compare only requested fields while retaining other confirmed settings."""
     for key, expected in update.items():
-        actual = confirmed.get(key)
+        if key not in confirmed:
+            # Missing is distinct from an explicitly persisted null.
+            return False
+        actual = confirmed[key]
         if isinstance(expected, Mapping):
             if not isinstance(actual, Mapping) or not _contains_update(
                 actual, expected
             ):
                 return False
-        elif actual != expected:
+        elif isinstance(expected, bool):
+            if not isinstance(actual, bool) or actual != expected:
+                return False
+        elif isinstance(expected, (int, float)):
+            if isinstance(actual, bool) or not isinstance(actual, (int, float)):
+                return False
+            if not math.isfinite(actual) or actual != expected:
+                return False
+        elif type(actual) is not type(expected) or actual != expected:
             return False
     return True
 
@@ -230,10 +283,19 @@ def snapshot_from_bootstrap(
         raise ProtectProtocolError("Bootstrap is missing a console identifier")
 
     devices: list[AirQualityDevice] = []
+    seen_ids: set[str] = set()
     for sensor in sensors:
-        if not isinstance(sensor, dict) or not _is_air_quality_sensor(sensor):
-            continue
+        if not isinstance(sensor, dict):
+            raise ProtectProtocolError("Bootstrap contains invalid sensor records")
         device_id = sensor.get("id")
+        if not isinstance(device_id, str) or not device_id:
+            raise ProtectProtocolError("Bootstrap sensor has no valid identifier")
+        if device_id in seen_ids:
+            raise ProtectProtocolError("Bootstrap contains duplicate sensor IDs")
+        seen_ids.add(device_id)
+        if not _is_air_quality_sensor(sensor):
+            # Unknown models are valid, but the inventory structure is not optional.
+            continue
         _validate_sensor(sensor)
         name = sensor.get("name")
         firmware = sensor.get("firmwareVersion")
@@ -286,6 +348,12 @@ class PrivateProtectClient:
         """Initialize this component with its entry-scoped dependencies."""
         # Keep all mutable state scoped to this instance and its config entry.
         host_part = _host_for_url(host)
+        if (
+            isinstance(port, bool)
+            or not isinstance(port, int)
+            or not 1 <= port <= 65535
+        ):
+            raise ProtectProtocolError("Invalid Protect port")
         port_part = "" if port == 443 else f":{port}"
         self._base_url = f"https://{host_part}{port_part}"
         self._ws_url = f"wss://{host_part}{port_part}{_WS_PATH}"
@@ -389,7 +457,11 @@ class PrivateProtectClient:
                     "rememberMe": False,
                 },
                 ssl=self._ssl,
+                allow_redirects=False,
+                timeout=_HTTP_TIMEOUT,
             ) as response:
+                if 300 <= response.status < 400:
+                    raise ProtectProtocolError("Protect login redirected off origin")
                 if response.status in (401, 403):
                     raise ProtectInvalidAuth("Protect rejected the credentials")
                 response.raise_for_status()
@@ -454,8 +526,11 @@ class PrivateProtectClient:
         readings = update.get("airQuality")
         if not isinstance(readings, Mapping):
             return
-        for metric, reading in readings.items():
-            if metric not in _MEASUREMENT_KEYS:
+        for wire_metric, reading in readings.items():
+            if wire_metric not in _MEASUREMENT_KEYS:
+                continue
+            metric = _canonical_metric(wire_metric)
+            if wire_metric != metric and metric in readings:
                 continue
             value = reading.get("value") if isinstance(reading, Mapping) else reading
             if isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -485,7 +560,12 @@ class PrivateProtectClient:
         request_id = self._refresh_request_id
         pushes = self._pending_bootstraps[request_id] = _BootstrapPushes()
         try:
-            payload = await self._async_read_bootstrap()
+            payload = await self._async_read_bootstrap(request_id=request_id)
+        except (_SupersededBootstrap, ProtectProtocolError, ProtectInvalidAuth):
+            if request_id < self._last_refresh_applied and self._snapshot is not None:
+                # A failed superseded request cannot poison newer verified health.
+                return self._snapshot
+            raise
         finally:
             self._pending_bootstraps.pop(request_id)
 
@@ -493,7 +573,12 @@ class PrivateProtectClient:
             # A newer HTTP request has already published its response.
             return self._snapshot
         # Validate the response and the merged state before changing the cache.
-        snapshot = snapshot_from_bootstrap(payload)
+        try:
+            snapshot = snapshot_from_bootstrap(payload)
+        except ProtectProtocolError:
+            if request_id < self._last_refresh_applied and self._snapshot is not None:
+                return self._snapshot
+            raise
         if pushes.sensor_fields or pushes.event_alarms or pushes.cursor is not None:
             payload = self._merge_bootstrap_pushes(payload, snapshot, pushes)
             snapshot = snapshot_from_bootstrap(payload)
@@ -516,8 +601,10 @@ class PrivateProtectClient:
             self._record_measurements(device.id, device.raw)
         return snapshot
 
-    async def _async_read_bootstrap(self) -> dict[str, Any]:
-        """Retrieve Protect bootstrap JSON with at most one session renewal."""
+    async def _async_read_bootstrap(
+        self, *, request_id: int | None = None
+    ) -> dict[str, Any]:
+        """Read a bounded Protect inventory with origin and session isolation."""
         for attempt in range(2):
             generation = self._auth_generation
             try:
@@ -525,10 +612,40 @@ class PrivateProtectClient:
                     f"{self._base_url}{_BOOTSTRAP_PATH}",
                     headers=self._headers.copy(),
                     ssl=self._ssl,
+                    allow_redirects=False,
+                    timeout=_HTTP_TIMEOUT,
                 ) as response:
+                    if 300 <= response.status < 400:
+                        raise ProtectProtocolError(
+                            "Protect bootstrap redirected off origin"
+                        )
                     if response.status not in (401, 403):
                         response.raise_for_status()
-                        payload = await response.json(content_type=None)
+                        size = response.headers.get("Content-Length")
+                        if (
+                            size
+                            and size.isdecimal()
+                            and int(size) > MAX_BOOTSTRAP_BYTES
+                        ):
+                            raise ProtectProtocolError(
+                                "Protect bootstrap exceeds byte limit"
+                            )
+                        chunks = bytearray()
+                        while True:
+                            chunk = await response.content.read(64 * 1024)
+                            if not chunk:
+                                break
+                            if len(chunks) + len(chunk) > MAX_BOOTSTRAP_BYTES:
+                                raise ProtectProtocolError(
+                                    "Protect bootstrap exceeds byte limit"
+                                )
+                            chunks.extend(chunk)
+                        try:
+                            payload = json.loads(chunks)
+                        except (ValueError, UnicodeError) as err:
+                            raise ProtectProtocolError(
+                                "Protect bootstrap is not JSON"
+                            ) from err
                         break
             except ClientSSLError as err:
                 raise ProtectTlsError(
@@ -538,9 +655,14 @@ class PrivateProtectClient:
                 raise ProtectCannotConnect("Unable to fetch Protect bootstrap") from err
             except ValueError as err:
                 raise ProtectProtocolError("Protect bootstrap is not JSON") from err
+            if request_id is not None and request_id < self._last_refresh_applied:
+                # Late credential denial does not warrant renewal or global reauth.
+                raise _SupersededBootstrap()
             if attempt:
-                self._invalidate_session(generation)
-                raise ProtectInvalidAuth("Protect session is not authorized")
+                if generation == self._auth_generation:
+                    self._invalidate_session(generation)
+                    raise ProtectInvalidAuth("Protect session is not authorized")
+                raise ProtectCannotConnect("A superseded session was rejected")
             await self._async_authenticate(rejected_generation=generation)
 
         if not isinstance(payload, dict):
@@ -566,11 +688,17 @@ class PrivateProtectClient:
                 _copy_pushed_fields(devices[device_id], current, fields)
 
         for device_id, metric in pushes.event_alarms:
-            reading = devices.get(device_id, {}).get("airQuality", {}).get(metric)
+            readings = devices.get(device_id, {}).get("airQuality", {})
+            reading = readings.get(metric)
+            if reading is None:
+                reading = readings.get(MEASUREMENT_ALIASES.get(metric))
             if isinstance(reading, dict):
                 # An older bootstrap status must not undo a recent event transition.
                 current = self._raw_devices.get(device_id, {})
-                recent = current.get("airQuality", {}).get(metric)
+                source_readings = current.get("airQuality", {})
+                recent = source_readings.get(metric)
+                if recent is None:
+                    recent = source_readings.get(MEASUREMENT_ALIASES.get(metric))
                 if isinstance(recent, Mapping) and "status" in recent:
                     reading["status"] = recent["status"]
                 else:
@@ -589,6 +717,9 @@ class PrivateProtectClient:
             raise ProtectProtocolError("Air quality device is not available")
         if not update:
             raise ProtectProtocolError("Sensor update must not be empty")
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", device_id):
+            # Even a percent-encoded slash can escape one API path segment.
+            raise ProtectProtocolError("Invalid Protect sensor identifier")
 
         async with self._write_lock:
             if device_id not in self._raw_devices:
@@ -602,7 +733,13 @@ class PrivateProtectClient:
                         json=dict(update),
                         headers=self._headers.copy(),
                         ssl=self._ssl,
+                        allow_redirects=False,
+                        timeout=_HTTP_TIMEOUT,
                     ) as response:
+                        if 300 <= response.status < 400:
+                            raise ProtectProtocolError(
+                                "Protect sensor write redirected off origin"
+                            )
                         if response.status == 403:
                             raise ProtectPermissionDenied(
                                 "Protect denied this setting change. Grant the local "
@@ -669,6 +806,9 @@ class PrivateProtectClient:
                 if self._auth_failure_callback is not None:
                     self._auth_failure_callback()
                 return
+            except ProtectStreamPermissionDenied:
+                # Back off without affecting periodic, authorized REST monitoring.
+                backoff = max(backoff, 30)
             except (
                 ProtectCannotConnect,
                 ClientConnectionError,
@@ -702,22 +842,33 @@ class PrivateProtectClient:
         for attempt in range(2):
             generation = self._auth_generation
             try:
-                websocket = await self._session.ws_connect(
-                    url,
-                    headers=self._headers.copy(),
-                    ssl=self._ssl,
-                    heartbeat=30,
-                    max_msg_size=MAX_MESSAGE_BYTES,
-                    timeout=ClientWSTimeout(ws_close=10),
-                )
+                async with asyncio.timeout(_WS_OPEN_TIMEOUT_SECONDS):
+                    websocket = await self._session.ws_connect(
+                        url,
+                        headers=self._headers.copy(),
+                        ssl=self._ssl,
+                        heartbeat=30,
+                        max_msg_size=MAX_MESSAGE_BYTES,
+                        allow_redirects=False,
+                        timeout=ClientWSTimeout(ws_close=10),
+                    )
                 break
             except WSServerHandshakeError as err:
-                if err.status not in (401, 403):
+                if err.status == 403:
+                    raise ProtectStreamPermissionDenied(
+                        "Protect rejected the WebSocket channel"
+                    ) from err
+                if err.status != 401:
                     raise
                 if attempt:
-                    self._invalidate_session(generation)
-                    raise ProtectInvalidAuth(
-                        "WebSocket session is not authorized"
+                    # Only a contemporaneous REST rejection proves bad credentials.
+                    # A denied stream alone must not stop working REST monitoring.
+                    try:
+                        await self._async_read_bootstrap()
+                    except ProtectInvalidAuth:
+                        raise
+                    raise ProtectStreamPermissionDenied(
+                        "Protect rejected the WebSocket channel"
                     ) from err
             await self._async_authenticate(rejected_generation=generation)
 
@@ -974,7 +1125,8 @@ class PrivateProtectClient:
             readings = device.raw.get("airQuality")
             if not isinstance(readings, Mapping):
                 continue
-            for metric, measurement in readings.items():
+            for wire_metric, measurement in readings.items():
+                metric = _canonical_metric(wire_metric)
                 if (
                     isinstance(measurement, Mapping)
                     and isinstance(measurement.get("status"), str)
@@ -992,8 +1144,14 @@ class PrivateProtectClient:
         readings = update.get("airQuality")
         if not isinstance(readings, Mapping):
             return
-        for metric, measurement in readings.items():
-            if metric not in _MEASUREMENT_KEYS or not isinstance(measurement, Mapping):
+        for wire_metric, measurement in readings.items():
+            if (
+                wire_metric not in _MEASUREMENT_KEYS
+                or not isinstance(measurement, Mapping)
+            ):
+                continue
+            metric = _canonical_metric(wire_metric)
+            if wire_metric != metric and metric in readings:
                 continue
             status = measurement.get("status")
             if not isinstance(status, str) or not status:
@@ -1129,7 +1287,7 @@ class PrivateProtectClient:
         if value is not None and not math.isfinite(value):
             raise ProtectProtocolError("Unsupported non-finite alarm value")
         return (
-            metric if isinstance(metric, str) else None,
+            _canonical_metric(metric) if isinstance(metric, str) else None,
             status if isinstance(status, str) else None,
             value,
         )

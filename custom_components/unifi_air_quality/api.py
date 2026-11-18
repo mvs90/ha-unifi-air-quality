@@ -8,7 +8,8 @@ import json
 import logging
 import math
 import re
-from collections.abc import Callable, Mapping
+import zlib
+from collections.abc import Awaitable, Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from http.cookies import SimpleCookie
@@ -18,6 +19,9 @@ from urllib.parse import quote
 
 from aiohttp import (
     ClientConnectionError,
+    ClientPayloadError,
+    ClientRequest,
+    ClientResponse,
     ClientResponseError,
     ClientSession,
     ClientSSLError,
@@ -106,6 +110,74 @@ class ProtectProtocolError(ProtectApiError):
     """Protect returned an unexpected payload."""
 
 
+async def reject_protect_redirects(
+    request: ClientRequest,
+    handler: Callable[[ClientRequest], Awaitable[ClientResponse]],
+) -> ClientResponse:
+    """Stop redirects before aiohttp can forward this private session's secrets.
+
+    WebSocket handshakes do not expose the HTTP allow_redirects option. Attach
+    this middleware to every entry and config-flow session so the same policy
+    protects both normal requests and the underlying WebSocket upgrade request.
+    """
+    response = await handler(request)
+    if 300 <= response.status < 400:
+        response.close()
+        raise ProtectProtocolError("Protect redirected an authenticated request")
+    return response
+
+
+async def _read_bootstrap_json(response: ClientResponse) -> Any:
+    """Decode bounded wire and expanded bytes before parsing the inventory.
+
+    aiohttp automatic decompression happens before application reads. Disable
+    it for this request and bound zlib output too, so a compressed response
+    cannot inflate an unbounded internal buffer before the length check runs.
+    """
+    size = response.headers.get("Content-Length")
+    if size and size.isdecimal() and int(size) > MAX_BOOTSTRAP_BYTES:
+        raise ProtectProtocolError("Protect bootstrap exceeds byte limit")
+    encoding = response.headers.get("Content-Encoding", "identity").lower().strip()
+    if encoding not in ("identity", "gzip", "deflate"):
+        raise ProtectProtocolError("Unsupported Protect content encoding")
+    decoder = (
+        zlib.decompressobj(
+            16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
+        )
+        if encoding != "identity"
+        else None
+    )
+    body = bytearray()
+    wire_bytes = 0
+    try:
+        while chunk := await response.content.read(64 * 1024):
+            wire_bytes += len(chunk)
+            if wire_bytes > MAX_BOOTSTRAP_BYTES:
+                raise ProtectProtocolError("Protect bootstrap exceeds byte limit")
+            remaining = MAX_BOOTSTRAP_BYTES - len(body)
+            decoded = decoder.decompress(chunk, remaining + 1) if decoder else chunk
+            if len(decoded) > remaining:
+                raise ProtectProtocolError("Protect bootstrap exceeds byte limit")
+            if decoder and decoder.unused_data:
+                raise ProtectProtocolError(
+                    "Protect bootstrap has trailing compressed data"
+                )
+            body.extend(decoded)
+        if decoder and not decoder.eof:
+            raise ProtectProtocolError("Protect bootstrap compression is incomplete")
+        return json.loads(body)
+    except (
+        ClientPayloadError,
+        zlib.error,
+        ValueError,
+        UnicodeError,
+        RecursionError,
+    ) as err:
+        raise ProtectProtocolError(
+            "Protect bootstrap cannot be decoded as JSON"
+        ) from err
+
+
 class _SupersededBootstrap(ProtectApiError):
     """An old request was refused after newer verified state was published."""
 
@@ -166,6 +238,22 @@ def _deep_merge(target: dict[str, Any], update: Mapping[str, Any]) -> None:
             _deep_merge(current, value)
         else:
             target[key] = value
+
+
+def _normalize_sensor_update(update: Mapping[str, Any]) -> dict[str, Any]:
+    """Apply older wire metric aliases to the current canonical cache keys.
+
+    A legacy push must replace the displayed canonical value as well as renew
+    its timestamp. Canonical fields win if a mixed-frame contains both names.
+    """
+    normalized = deepcopy(dict(update))
+    readings = normalized.get("airQuality")
+    if isinstance(readings, dict):
+        for canonical, legacy in MEASUREMENT_ALIASES.items():
+            if legacy in readings:
+                readings.setdefault(canonical, readings[legacy])
+                readings.pop(legacy)
+    return normalized
 
 
 def _pushed_fields(
@@ -372,7 +460,7 @@ class PrivateProtectClient:
         self._sensor_alarm_states: dict[tuple[str, str], ProtectAlarm] = {}
         self._alarm_states: dict[tuple[str, str], ProtectAlarm] = {}
         self._uncertain_alarm_metrics: set[tuple[str, str]] = set()
-        # Pruned orphan IDs can only be cleared by authoritative sensor status.
+        # Sources without a matching event ID need an authoritative normal status.
         self._unresolvable_alarm_metrics: set[_AlarmKey] = set()
         self._ws_task: asyncio.Task[None] | None = None
         self.websocket_connected = False
@@ -573,12 +661,7 @@ class PrivateProtectClient:
             # A newer HTTP request has already published its response.
             return self._snapshot
         # Validate the response and the merged state before changing the cache.
-        try:
-            snapshot = snapshot_from_bootstrap(payload)
-        except ProtectProtocolError:
-            if request_id < self._last_refresh_applied and self._snapshot is not None:
-                return self._snapshot
-            raise
+        snapshot = snapshot_from_bootstrap(payload)
         if pushes.sensor_fields or pushes.event_alarms or pushes.cursor is not None:
             payload = self._merge_bootstrap_pushes(payload, snapshot, pushes)
             snapshot = snapshot_from_bootstrap(payload)
@@ -610,9 +693,10 @@ class PrivateProtectClient:
             try:
                 async with self._session.get(
                     f"{self._base_url}{_BOOTSTRAP_PATH}",
-                    headers=self._headers.copy(),
+                    headers=self._headers | {"Accept-Encoding": "gzip, deflate"},
                     ssl=self._ssl,
                     allow_redirects=False,
+                    auto_decompress=False,
                     timeout=_HTTP_TIMEOUT,
                 ) as response:
                     if 300 <= response.status < 400:
@@ -621,31 +705,7 @@ class PrivateProtectClient:
                         )
                     if response.status not in (401, 403):
                         response.raise_for_status()
-                        size = response.headers.get("Content-Length")
-                        if (
-                            size
-                            and size.isdecimal()
-                            and int(size) > MAX_BOOTSTRAP_BYTES
-                        ):
-                            raise ProtectProtocolError(
-                                "Protect bootstrap exceeds byte limit"
-                            )
-                        chunks = bytearray()
-                        while True:
-                            chunk = await response.content.read(64 * 1024)
-                            if not chunk:
-                                break
-                            if len(chunks) + len(chunk) > MAX_BOOTSTRAP_BYTES:
-                                raise ProtectProtocolError(
-                                    "Protect bootstrap exceeds byte limit"
-                                )
-                            chunks.extend(chunk)
-                        try:
-                            payload = json.loads(chunks)
-                        except (ValueError, UnicodeError) as err:
-                            raise ProtectProtocolError(
-                                "Protect bootstrap is not JSON"
-                            ) from err
+                        payload = await _read_bootstrap_json(response)
                         break
             except ClientSSLError as err:
                 raise ProtectTlsError(
@@ -751,6 +811,7 @@ class PrivateProtectClient:
                             break
                 except (
                     ClientConnectionError,
+                    ClientPayloadError,
                     ClientResponseError,
                     TimeoutError,
                 ) as err:
@@ -812,6 +873,7 @@ class PrivateProtectClient:
             except (
                 ProtectCannotConnect,
                 ClientConnectionError,
+                ClientPayloadError,
                 WSServerHandshakeError,
                 TimeoutError,
             ):
@@ -849,7 +911,6 @@ class PrivateProtectClient:
                         ssl=self._ssl,
                         heartbeat=30,
                         max_msg_size=MAX_MESSAGE_BYTES,
-                        allow_redirects=False,
                         timeout=ClientWSTimeout(ws_close=10),
                     )
                 break
@@ -913,7 +974,11 @@ class PrivateProtectClient:
             self._raw_devices.pop(device_id, None)
             self._clear_device_alarm_states(device_id)
         elif operation in ("add", "update"):
-            current = deepcopy(self._raw_devices.get(device_id, {"id": device_id}))
+            data = _normalize_sensor_update(data)
+            # Migrate cached legacy siblings before merging a partial alias frame.
+            current = _normalize_sensor_update(
+                self._raw_devices.get(device_id, {"id": device_id})
+            )
             _deep_merge(current, data)
             if _is_air_quality_sensor(current):
                 _validate_sensor(current)
@@ -1019,9 +1084,11 @@ class PrivateProtectClient:
         self._verified_at[device_id] = now
         unresolved = self._has_retired_alarm_source(key)
         confirmed_by_sensor = key in self._sensor_alarm_states
-        if is_ended and (
-            unresolved or key in self._unresolvable_alarm_metrics
-        ) and not confirmed_by_sensor:
+        if (
+            is_ended
+            and (unresolved or key in self._unresolvable_alarm_metrics)
+            and not confirmed_by_sensor
+        ):
             # The new source ended, not necessarily a source retired at resync.
             # No all-clear is verified while any older end is still missing.
             self._uncertain_alarm_metrics.add(key)
@@ -1097,6 +1164,11 @@ class PrivateProtectClient:
                 self._raw_alarm_events.pop(event_id, None)
                 self._alarm_event_devices.pop(event_id)
 
+        # A retired sensor-status source has no event ID whose end could resolve
+        # it. Keep that uncertainty even if a newer, independent event ends.
+        self._unresolvable_alarm_metrics.update(
+            self._sensor_alarm_states.keys() - preserved
+        )
         self._sensor_alarm_states = {
             key: alarm
             for key, alarm in self._sensor_alarm_states.items()
@@ -1112,8 +1184,7 @@ class PrivateProtectClient:
             and (key in preserved or key not in previous)
         }
         self._unresolvable_alarm_metrics = {
-            key for key in self._unresolvable_alarm_metrics
-            if key[0] in device_ids
+            key for key in self._unresolvable_alarm_metrics if key[0] in device_ids
         }
         self._uncertain_alarm_metrics = {
             key
@@ -1145,9 +1216,8 @@ class PrivateProtectClient:
         if not isinstance(readings, Mapping):
             return
         for wire_metric, measurement in readings.items():
-            if (
-                wire_metric not in _MEASUREMENT_KEYS
-                or not isinstance(measurement, Mapping)
+            if wire_metric not in _MEASUREMENT_KEYS or not isinstance(
+                measurement, Mapping
             ):
                 continue
             metric = _canonical_metric(wire_metric)
@@ -1178,9 +1248,10 @@ class PrivateProtectClient:
                         self._active_alarm_events.pop(event_id, None)
                         self._alarm_event_devices.pop(event_id, None)
                 self._unresolvable_alarm_metrics.discard(key)
-                if key in self._uncertain_alarm_metrics:
-                    # End after verified normal, not after an unknown resync.
-                    self._alarm_states.setdefault(key, alarm)
+            if key in self._uncertain_alarm_metrics:
+                # Preserve aggregate history through unknown state: a confirmed
+                # high status continues it, and normal produces one verified end.
+                self._alarm_states.setdefault(key, alarm)
             self._uncertain_alarm_metrics.discard(key)
             # A verified status confirms device liveness, independently of a value.
             now = monotonic()
@@ -1213,6 +1284,10 @@ class PrivateProtectClient:
 
         if current is not None:
             self._alarm_states[key] = current
+            if previous is None and key in self._uncertain_alarm_metrics:
+                # This aggregate already started before becoming unknown. A new
+                # source confirms activity but must not emit a duplicate start.
+                return
         else:
             self._alarm_states.pop(key, None)
         if (previous is not None) == (current is not None):

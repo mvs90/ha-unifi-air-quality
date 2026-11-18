@@ -52,6 +52,8 @@ class RingLedMetricSelect(UnifiAirQualityEntity, SelectEntity):
         """Translate the confirmed numeric LED metric into an HA option."""
         # Unknown firmware enum values remain unknown rather than selecting a default.
         value = self.raw_value(("airQualitySettings", "ringLedMetric"))
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
         return next(
             (option for option, raw in LED_METRIC_VALUES.items() if raw == value), None
         )

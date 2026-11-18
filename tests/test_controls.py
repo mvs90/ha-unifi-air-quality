@@ -468,3 +468,31 @@ async def test_night_mode_time_boundaries_round_trip(wire_value) -> None:
         coordinator.client.async_update_device.assert_awaited_once_with(
             "device-id", nested_update(description.path, wire_value)
         )
+
+
+@pytest.mark.parametrize("wire_value", [False, True, float("inf"), float("nan"), "4"])
+def test_number_rejects_invalid_wire_types(wire_value) -> None:
+    """A numeric control must not display booleans or non-finite server values."""
+    device = _device()
+    device.raw["airQualitySettings"]["aqiSettings"]["lowThreshold"] = wire_value
+    entity = AirQualityNumber(
+        _coordinator(device),
+        "device-id",
+        _description(NUMBER_DESCRIPTIONS, "aqi_low_threshold"),
+    )
+    assert entity.native_value is None
+
+
+def test_threshold_missing_is_unknown_and_explicit_null_is_zero() -> None:
+    """Only the documented explicit-null threshold maps to a displayed zero."""
+    device = _device()
+    entity = AirQualityNumber(
+        _coordinator(device),
+        "device-id",
+        _description(NUMBER_DESCRIPTIONS, "aqi_low_threshold"),
+    )
+    assert entity.native_value == 0.0
+    del device.raw["airQualitySettings"]["aqiSettings"]["lowThreshold"]
+    assert entity.native_value is None
+    device.raw["airQualitySettings"]["aqiSettings"] = None
+    assert entity.native_value is None

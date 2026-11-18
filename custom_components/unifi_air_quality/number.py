@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from homeassistant.components.number import (
@@ -24,6 +25,8 @@ from . import UnifiAirQualityConfigEntry
 from .const import DOMAIN
 from .coordinator import UnifiAirQualityCoordinator
 from .entity import UnifiAirQualityEntity, async_setup_dynamic_entities
+
+_MISSING = object()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -178,10 +181,14 @@ class AirQualityNumber(UnifiAirQualityEntity, NumberEntity):
     def native_value(self) -> float | None:
         """Return a valid native measurement/setting value or unknown."""
         # Check wire types before converting to the Home Assistant representation.
-        value = self.raw_value(self.entity_description.path)
+        value = self.raw_value(self.entity_description.path, default=_MISSING)
         if value is None and self.entity_description.activates_alarm:
             return 0.0
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+        ):
             return None
         return float(value)
 

@@ -339,3 +339,110 @@ def test_new_tls_default_and_explicit_legacy_value():
         )[CONF_VERIFY_SSL]
         is False
     )
+
+
+@pytest.mark.parametrize("normal_before_event_end", [False, True])
+async def test_retired_sensor_source_requires_normal_after_independent_event(
+    normal_before_event_end, load_fixture
+):
+    """A newer event cannot end an unresolved sensor-only alarm source."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    events = json.loads(load_fixture("websocket_alarm_events.json"))
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    await client.async_get_snapshot()
+    callback = MagicMock()
+    client.subscribe_alarm_events(callback)
+    push(client, {"airQuality": {"co2": {"status": "high", "value": 1400}}})
+    await client.async_get_snapshot()
+    assert client.snapshot.devices[0].uncertain_alarm_metrics == ("co2",)
+    assert callback.call_count == 1
+
+    started, ended = events["extreme_started"], events["extreme_ended"]
+    client._process_websocket_payload(
+        _frame(started["action"] | {"id": "independent"}) + _frame(started["data"])
+    )
+    assert callback.call_count == 1
+    assert client.snapshot.devices[0].active_alarms
+    normal = {"airQuality": {"co2": {"status": "normal", "value": 600}}}
+    if normal_before_event_end:
+        push(client, normal)
+        assert client.snapshot.devices[0].active_alarms
+        assert callback.call_count == 1
+
+    client._process_websocket_payload(
+        _frame(ended["action"] | {"id": "independent"}) + _frame(ended["data"])
+    )
+    assert not client.snapshot.devices[0].active_alarms
+    if not normal_before_event_end:
+        assert callback.call_count == 1
+        assert client.snapshot.devices[0].uncertain_alarm_metrics == ("co2",)
+        push(client, normal)
+    assert client.snapshot.devices[0].uncertain_alarm_metrics == ()
+    assert callback.call_count == 2
+    assert callback.call_args.args[0].transition == "ended"
+    push(client, normal)
+    assert callback.call_count == 2
+
+
+async def test_reconfirmed_sensor_alarm_does_not_duplicate_aggregate_start(
+    load_fixture,
+):
+    """Unknown state does not end the aggregate's existing notification cycle."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    await client.async_get_snapshot()
+    callback = MagicMock()
+    client.subscribe_alarm_events(callback)
+    push(client, {"airQuality": {"co2": {"status": "high", "value": 1400}}})
+    await client.async_get_snapshot()
+    push(client, {"airQuality": {"co2": {"status": "critical", "value": 2000}}})
+    assert callback.call_count == 1
+    assert client.snapshot.devices[0].uncertain_alarm_metrics == ()
+    assert client.snapshot.devices[0].active_alarms[0].status == "critical"
+    push(client, {"airQuality": {"co2": {"status": "normal", "value": 600}}})
+    assert callback.call_count == 2
+    assert callback.call_args.args[0].transition == "ended"
+
+
+async def test_older_normal_bootstrap_does_not_clear_new_alarm_source(load_fixture):
+    """A concurrent event start takes precedence over an older normal response."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    normal_payload = deepcopy(payload)
+    normal_payload["sensors"][0]["airQuality"]["co2"] = {
+        "status": "normal", "value": 600
+    }
+    response = FakeResponse(payload=normal_payload)
+    events = json.loads(load_fixture("websocket_alarm_events.json"))
+    client = _client(
+        FakeSession(
+            FakeResponse(),
+            [FakeResponse(payload=payload), FakeResponse(payload=payload), response],
+        )
+    )
+    await client.async_get_snapshot()
+    callback = MagicMock()
+    client.subscribe_alarm_events(callback)
+    push(client, {"airQuality": {"co2": {"status": "high", "value": 1400}}})
+    await client.async_get_snapshot()
+
+    async def read_normal_with_new_event():
+        """Deliver a newer stream event before the pending HTTP body completes."""
+        started = events["extreme_started"]
+        client._process_websocket_payload(
+            _frame(started["action"] | {"id": "concurrent"}) + _frame(started["data"])
+        )
+        return normal_payload
+
+    with patch.object(response, "json", side_effect=read_normal_with_new_event):
+        snapshot = await client.async_get_snapshot()
+    assert snapshot.devices[0].active_alarms
+    assert callback.call_count == 1
+    ended = events["extreme_ended"]
+    client._process_websocket_payload(
+        _frame(ended["action"] | {"id": "concurrent"}) + _frame(ended["data"])
+    )
+    assert callback.call_count == 1
+    assert client.snapshot.devices[0].uncertain_alarm_metrics == ("co2",)
+    push(client, {"airQuality": {"co2": {"status": "normal", "value": 600}}})
+    assert callback.call_count == 2
+    assert callback.call_args.args[0].transition == "ended"

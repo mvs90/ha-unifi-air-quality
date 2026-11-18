@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from aiohttp import ClientSession, CookieJar
+from aiohttp import ClientSession, DummyCookieJar
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_HOST,
@@ -17,7 +17,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
-from .api import PrivateProtectClient
+from .api import PrivateProtectClient, reject_protect_redirects
 from .const import CONF_VERIFY_SSL, DOMAIN, MANUFACTURER
 from .coordinator import UnifiAirQualityCoordinator
 
@@ -47,7 +47,13 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: UnifiAirQualityConfigEntry
 ) -> bool:
     """Set up UniFi Protect Air Quality from a config entry."""
-    session = async_create_clientsession(hass, cookie_jar=CookieJar(unsafe=True))
+    # Only generation-checked adapter headers own authentication cookies; an old
+    # response must not overwrite a renewed session through automatic storage.
+    session = async_create_clientsession(
+        hass,
+        cookie_jar=DummyCookieJar(),
+        middlewares=(reject_protect_redirects,),
+    )
     try:
         return await _async_setup_entry(hass, entry, session)
     except BaseException:

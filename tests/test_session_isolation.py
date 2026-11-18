@@ -4,7 +4,8 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from aiohttp import CookieJar, web
+from aiohttp import DummyCookieJar, web
+from aiohttp.test_utils import TestServer
 from homeassistant.helpers.aiohttp_client import (
     async_create_clientsession,
     async_get_clientsession,
@@ -17,6 +18,7 @@ from custom_components.unifi_air_quality.config_flow import UnifiAirQualityConfi
 from custom_components.unifi_air_quality.const import DOMAIN
 
 from .ha_test_helpers import MockConfigEntry
+from .test_client import _client
 from .test_config_flow import USER_INPUT
 
 
@@ -24,6 +26,8 @@ async def test_login_cookies_do_not_reach_shared_or_other_entry_session(
     hass, socket_enabled
 ):
     """Verify login cookies do not reach shared or other entry session."""
+
+    seen_accounts = []
 
     async def login(request):
         """Provide login for the isolated regression scenario."""
@@ -33,7 +37,8 @@ async def test_login_cookies_do_not_reach_shared_or_other_entry_session(
         return response
 
     async def bootstrap(request):
-        """Provide bootstrap for the isolated regression scenario."""
+        """Record which entry authenticated each adapter bootstrap request."""
+        seen_accounts.append(request.cookies.get("SESSION"))
         return web.json_response(
             {
                 "nvr": {"id": "synthetic-console"},
@@ -56,8 +61,8 @@ async def test_login_cookies_do_not_reach_shared_or_other_entry_session(
     url = str(site._server.sockets[0].getsockname()[1])
     base = URL("http://127.0.0.1:" + url)
     shared = async_get_clientsession(hass)
-    first = async_create_clientsession(hass, cookie_jar=CookieJar(unsafe=True))
-    second = async_create_clientsession(hass, cookie_jar=CookieJar(unsafe=True))
+    first = async_create_clientsession(hass, cookie_jar=DummyCookieJar())
+    second = async_create_clientsession(hass, cookie_jar=DummyCookieJar())
     clients = [
         PrivateProtectClient(
             session,
@@ -76,21 +81,22 @@ async def test_login_cookies_do_not_reach_shared_or_other_entry_session(
         for client in clients:
             client._base_url = str(base)
         await asyncio.gather(*(client.async_get_snapshot() for client in clients))
-        assert (
-            first.cookie_jar.filter_cookies(base)["SESSION"].value == "synthetic-first"
-        )
-        assert (
-            second.cookie_jar.filter_cookies(base)["SESSION"].value
-            == "synthetic-second"
-        )
-        assert not shared.cookie_jar.filter_cookies(base)
-        for session, expected in (
-            (first, "synthetic-first"),
-            (second, "synthetic-second"),
-            (shared, None),
-        ):
+        assert set(seen_accounts) == {"synthetic-first", "synthetic-second"}
+        for session in (first, second, shared):
+            assert not session.cookie_jar.filter_cookies(base)
             async with session.get(base / "cookies") as response:
-                assert await response.json() == {"account": expected}
+                # An unadorned request must not inherit any adapter credentials.
+                assert await response.json() == {"account": None}
+        for client, session, account in zip(
+            clients,
+            (first, second),
+            ("synthetic-first", "synthetic-second"),
+            strict=True,
+        ):
+            async with session.get(
+                base / "cookies", headers=client._headers.copy()
+            ) as response:
+                assert await response.json() == {"account": account}
         await clients[0].async_close()
         assert first.closed
         assert not second.closed
@@ -132,6 +138,7 @@ async def test_config_validation_closes_session_on_every_exit(hass, error):
             assert await flow._validate(USER_INPUT) == ("synthetic-console", "Protect")
             assert captured[0] is not captured[1]
     assert all(session.closed for session in captured)
+    assert all(isinstance(session.cookie_jar, DummyCookieJar) for session in captured)
 
 
 async def test_setup_entries_own_distinct_sessions_and_close_on_unload(hass):
@@ -179,7 +186,75 @@ async def test_setup_entries_own_distinct_sessions_and_close_on_unload(hass):
             assert await async_setup_entry(hass, entry)
         assert sessions[0] is not sessions[1]
         assert sessions[0].cookie_jar is not sessions[1].cookie_jar
+        assert all(
+            isinstance(session.cookie_jar, DummyCookieJar) for session in sessions
+        )
         assert await async_unload_entry(hass, entries[0])
         assert sessions[0].closed and not sessions[1].closed
         assert await async_unload_entry(hass, entries[1])
         assert sessions[1].closed
+
+
+@pytest.mark.parametrize("late_status", [200, 401, 403])
+async def test_late_cookie_response_cannot_replace_renewed_session(
+    hass, socket_enabled, late_status
+):
+    """Keep the current wire cookie after a superseded response sets an old one."""
+    old_started = asyncio.Event()
+    release_old = asyncio.Event()
+    state = {"logins": 0, "reads": 0, "seen": []}
+    payload = {"nvr": {"id": "synthetic-console"}, "sensors": []}
+
+    async def login(request):
+        """Issue a unique synthetic cookie for each successful session renewal."""
+        await request.json()
+        state["logins"] += 1
+        response = web.json_response({})
+        response.set_cookie("SESSION", f"synthetic-{state['logins']}")
+        return response
+
+    async def bootstrap(request):
+        """Delay one old response until a newer authenticated refresh has finished."""
+        state["reads"] += 1
+        state["seen"].append(request.cookies.get("SESSION"))
+        if state["reads"] == 2:
+            old_started.set()
+            await release_old.wait()
+            response = web.json_response(payload, status=late_status)
+            response.set_cookie("SESSION", "synthetic-1")
+            return response
+        if request.cookies.get("SESSION") != f"synthetic-{state['logins']}":
+            return web.json_response({}, status=401)
+        return web.json_response(payload)
+
+    app = web.Application()
+    app.router.add_post("/api/auth/login", login)
+    app.router.add_get("/proxy/protect/api/bootstrap", bootstrap)
+    async with TestServer(app, host="127.0.0.1") as server:
+        session = async_create_clientsession(hass, cookie_jar=DummyCookieJar())
+        client = _client(session)
+        client._base_url = str(server.make_url("")).rstrip("/")
+        old_request = None
+        try:
+            await client.async_get_snapshot()
+            old_request = asyncio.create_task(client.async_get_snapshot())
+            await old_started.wait()
+            await client._async_authenticate(
+                rejected_generation=client._auth_generation
+            )
+            confirmed = await client.async_get_snapshot()
+            release_old.set()
+            assert await old_request is confirmed
+            assert not client.authentication_failed
+            assert not session.cookie_jar.filter_cookies(server.make_url(""))
+            assert client._headers["Cookie"] == "SESSION=synthetic-2"
+            await client.async_get_snapshot()
+            assert state["seen"] == [
+                "synthetic-1", "synthetic-1", "synthetic-2", "synthetic-2"
+            ]
+            assert state["logins"] == 2
+        finally:
+            release_old.set()
+            if old_request is not None:
+                await old_request
+            await client.async_close()

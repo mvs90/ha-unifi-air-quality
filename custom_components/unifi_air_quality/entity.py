@@ -54,13 +54,15 @@ def async_setup_dynamic_entities(
     discover()
 
 
-def nested_value(data: dict[str, Any], path: tuple[str, ...]) -> Any:
-    """Read a value from a nested private-API payload."""
+def nested_value(
+    data: dict[str, Any], path: tuple[str, ...], *, default: Any = None
+) -> Any:
+    """Read a nested value, distinguishing absent fields when a default is given."""
     current: Any = data
     for key in path:
-        if not isinstance(current, dict):
-            return None
-        current = current.get(key)
+        if not isinstance(current, dict) or key not in current:
+            return default
+        current = current[key]
     return current
 
 
@@ -122,10 +124,10 @@ class UnifiAirQualityEntity(CoordinatorEntity[UnifiAirQualityCoordinator]):
             and self.coordinator.client.is_device_fresh(self._device_id)
         )
 
-    def raw_value(self, path: tuple[str, ...]) -> Any:
-        """Read a raw setting from the current device."""
+    def raw_value(self, path: tuple[str, ...], *, default: Any = None) -> Any:
+        """Read a setting while preserving an explicit default for absent data."""
         device = self.device
-        return nested_value(device.raw, path) if device else None
+        return nested_value(device.raw, path, default=default) if device else default
 
     async def async_write_value(self, path: tuple[str, ...], value: Any) -> None:
         """Write one setting through the private API adapter."""

@@ -152,8 +152,9 @@ handshake once. Concurrent requests share the renewed session. Home Assistant
 requests reauthentication only when login or the freshly authenticated request
 is rejected; a temporarily unreachable console remains a connection failure.
 Each config entry and each setup/reauthentication attempt uses its own HTTP
-session and cookie jar, never Home Assistant's shared session. After rejected
-credentials, automatic password logins stop until reauthentication succeeds;
+session, never Home Assistant's shared session. The adapter owns generation-scoped
+cookie headers; automatic cookie storage is disabled so a delayed old response
+cannot replace the renewed session. After rejected credentials, automatic password logins stop until reauthentication succeeds;
 the WebSocket also requests reauthentication immediately.
 
 New setups verify HTTPS and WSS certificates by default. Use a console
@@ -213,7 +214,8 @@ Reconnects refresh bootstrap before following its cursor. Current measurement
 statuses replace transient alarm caches, clearing missed end events. An orphaned
 alarm without a confirming status expires to **unknown**. Recent event identities
 are retained so a later matching Protect end frame can resolve that alarm.
-A newer alarm ending does **not** confirm an older unresolved event has ended:
+A newer alarm ending does **not** confirm an older unresolved event or sensor-status
+source has ended. Sensor-only uncertainty needs an authoritative normal reading:
 the aggregate remains unknown until the last known source ends or a verified
 normal sensor status confirms all-clear. If bounded identity history is pruned,
 only an authoritative normal status can clear the remaining uncertainty.
@@ -246,8 +248,9 @@ an actionable HA update error and sanitized diagnostics instead of false alerts.
 Unknown optional fields are tolerated. Frames are limited to **1 MiB wire data
 per frame**, **2 MiB decompressed per frame**, and two frames per message; bounded
 zlib expansion rejects bombs, truncation and concatenated streams.
-Full bootstrap HTTP JSON bodies have a **16 MiB decoded-byte limit** (including
-responses with no Content-Length). Invalid/mixed or duplicate-ID inventories
+Full bootstrap HTTP JSON bodies have a **16 MiB limit on both wire and decoded bytes**
+(including responses with no Content-Length). Gzip and deflate are decoded incrementally
+with bounded output; unsupported, truncated and concatenated encodings fail closed. Invalid/mixed or duplicate-ID inventories
 raise an actionable protocol error without replacing the previous registry.
 A genuinely empty inventory and unknown valid sensor models remain supported. Incompatible
 frames trigger a controlled reconnect/resync.

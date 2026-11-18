@@ -137,7 +137,7 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
             return None
         key = self.entity_description.payload_key
         measurement = air_quality.get(key)
-        if measurement is None:
+        if key not in air_quality:
             measurement = air_quality.get(MEASUREMENT_ALIASES.get(key))
         if not isinstance(measurement, dict):
             return None

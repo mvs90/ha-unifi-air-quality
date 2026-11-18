@@ -10,16 +10,55 @@ from aiohttp import WSServerHandshakeError
 from custom_components.unifi_air_quality.api import (
     MAX_BOOTSTRAP_BYTES,
     PrivateProtectClient,
+    ProtectCannotConnect,
     ProtectProtocolError,
     ProtectStreamPermissionDenied,
     _contains_update,
     _host_for_url,
+    _normalize_sensor_update,
     snapshot_from_bootstrap,
 )
+from custom_components.unifi_air_quality.binary_sensor import (
+    ALARM_DESCRIPTIONS,
+    UnifiAirQualityAlarmBinarySensor,
+)
+from custom_components.unifi_air_quality.const import MEASUREMENT_ALIASES
 from custom_components.unifi_air_quality.event import ALARM_EVENT_TYPES
+from custom_components.unifi_air_quality.sensor import (
+    SENSOR_DESCRIPTIONS,
+    UnifiAirQualitySensor,
+)
 
 from .test_client import FakeResponse, FakeSession, _client
+from .test_controls import _coordinator
 from .test_recovery import push
+
+
+@pytest.mark.parametrize(
+    ("update", "expected"),
+    [
+        ({}, {}),
+        ({"airQuality": None}, {"airQuality": None}),
+        ({"airQuality": {"co2": 1}}, {"airQuality": {"co2": 1}}),
+        (
+            {"airQuality": {"pm2_5": 8}},
+            {"airQuality": {"pm2p5": 8}},
+        ),
+        (
+            {"airQuality": {"pm2_5": 8, "pm2p5": 9}},
+            {"airQuality": {"pm2p5": 9}},
+        ),
+        (
+            {"airQuality": {"vapeIndex": 1, "vape": 2}},
+            {"airQuality": {"vape": 2}},
+        ),
+    ],
+)
+def test_canonical_update_copy_isolated_and_deterministic(update, expected):
+    """Do not mutate wire frames; canonical values win in mixed frames."""
+    old = json.loads(json.dumps(update))
+    assert _normalize_sensor_update(update) == expected
+    assert update == old
 
 
 @pytest.mark.parametrize(
@@ -69,7 +108,7 @@ def test_origin_rejects_noncanonical_port(port):
             host="protect.local",
             port=port,
             username="user",
-            password="synthetic",  # pragma: allowlist secret -- test fixture only
+            password="synthetic",
             verify_ssl=True,
         )
 
@@ -111,9 +150,9 @@ def test_inventory_fails_closed_on_structural_ambiguity(inventory):
 
 def test_empty_and_mixed_inventories_remain_supported():
     """An empty console and an unknown but valid sensor type are permitted."""
-    assert snapshot_from_bootstrap(
-        {"nvr": {"id": "console"}, "sensors": []}
-    ).devices == ()
+    assert (
+        snapshot_from_bootstrap({"nvr": {"id": "console"}, "sensors": []}).devices == ()
+    )
     payload = {
         "nvr": {"id": "console"},
         "sensors": [
@@ -187,9 +226,7 @@ async def test_bootstrap_fails_closed_on_header_and_chunked_overflow(load_fixtur
     assert (await client.async_get_snapshot()).devices
 
     client._session.get_response = FakeResponse(payload=payload)
-    with patch(
-        "custom_components.unifi_air_quality.api.MAX_BOOTSTRAP_BYTES", 100
-    ):
+    with patch("custom_components.unifi_air_quality.api.MAX_BOOTSTRAP_BYTES", 100):
         with pytest.raises(ProtectProtocolError, match="byte limit"):
             await client.async_get_snapshot()
     assert (await client.async_get_snapshot()).devices
@@ -218,11 +255,29 @@ async def test_legacy_alarm_metrics_share_canonical_entity_keys(load_fixture):
     assert "pm2p5_alarm_started" in ALARM_EVENT_TYPES
     assert client.is_alarm_fresh("anonymous-air-quality-id", "pm2p5")
     assert client.snapshot.devices[0].active_alarms[0].metric == "pm2p5"
-    push(
-        client, {"airQuality": {"pm2_5": {"status": "high", "value": 15.2}}}
-    )
+    push(client, {"airQuality": {"pm2_5": {"status": "high", "value": 15.2}}})
     assert len(observed) == 1
     assert client.is_measurement_fresh("anonymous-air-quality-id", "pm2p5")
+
+
+async def test_alias_push_updates_canonical_reading_with_failed_rest(load_fixture):
+    """Do not keep an old canonical display alive with newer alias timestamps."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    payload["sensors"][0]["airQuality"]["pm2p5"] = 3
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    await client.async_get_snapshot()
+    for value in (4, 8, 15):
+        push(client, {"airQuality": {"pm2_5": value}})
+        raw = client.snapshot.devices[0].raw["airQuality"]
+        assert raw["pm2p5"] == value
+        assert client.is_measurement_fresh("anonymous-air-quality-id", "pm2p5")
+    from aiohttp import ClientConnectionError
+
+    session.get_response = FakeResponse(error=ClientConnectionError())
+    with pytest.raises(ProtectCannotConnect):
+        await client.async_get_snapshot()
+    assert client.snapshot.devices[0].raw["airQuality"]["pm2p5"] == 15
 
 
 async def test_scalar_and_canonical_status_aliases_are_not_double_counted(load_fixture):
@@ -243,9 +298,7 @@ async def test_scalar_and_canonical_status_aliases_are_not_double_counted(load_f
     )
     assert not events
     assert client.is_alarm_fresh("anonymous-air-quality-id", "pm2p5")
-    push(
-        client, {"airQuality": {"vapeIndex": {"status": "detected", "value": 1}}}
-    )
+    push(client, {"airQuality": {"vapeIndex": {"status": "detected", "value": 1}}})
     assert events[0].metric == "vape"
     assert client.is_alarm_fresh("anonymous-air-quality-id", "vape")
 
@@ -323,12 +376,12 @@ async def test_stream_denial_preserves_authorized_rest_monitoring(status, load_f
         await client._websocket_once()
     assert not client.authentication_failed
     assert (await client.async_get_snapshot()).devices
-    for _url, args in session.ws_calls:
-        assert args["allow_redirects"] is False
+    assert len(session.ws_calls) == (1 if status == 403 else 2)
 
 
 async def test_websocket_handshake_deadline_is_enforced():
     """A stalled opening handshake cannot occupy the coordinator indefinitely."""
+
     class HangingSession(FakeSession):
         """Model a server that never completes a WebSocket handshake."""
 
@@ -374,3 +427,77 @@ async def test_cancelled_setting_write_releases_lock(load_fixture):
     with pytest.raises(asyncio.CancelledError):
         await operation
     assert not client._write_lock.locked()
+
+
+@pytest.mark.parametrize(("canonical", "legacy"), list(MEASUREMENT_ALIASES.items()))
+async def test_all_metric_aliases_share_value_alarm_and_expiry(
+    load_fixture, canonical, legacy
+):
+    """Keep legacy particle/vape values, alarms and entity freshness synchronized."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    payload["sensors"][0]["airQuality"] = {canonical: {"value": 1, "status": "neutral"}}
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    observed = []
+    client.subscribe_alarm_events(observed.append)
+    with patch(
+        "custom_components.unifi_air_quality.api.monotonic", return_value=10
+    ) as now:
+        await client.async_get_snapshot()
+        now.return_value = 131
+        push(client, {"airQuality": {legacy: {"value": 42, "status": "high"}}})
+        coordinator = _coordinator(client.snapshot.devices[0])
+        coordinator.client = client
+        sensor_description = next(
+            item for item in SENSOR_DESCRIPTIONS if item.payload_key == canonical
+        )
+        alarm_description = next(
+            item for item in ALARM_DESCRIPTIONS if item.payload_key == canonical
+        )
+        sensor = UnifiAirQualitySensor(
+            coordinator, "anonymous-air-quality-id", sensor_description
+        )
+        alarm = UnifiAirQualityAlarmBinarySensor(
+            coordinator, "anonymous-air-quality-id", alarm_description
+        )
+        assert sensor.native_value == 42
+        assert sensor.available and alarm.available and alarm.is_on
+        unique_ids = (sensor.unique_id, alarm.unique_id)
+        assert len(observed) == 1 and observed[0].metric == canonical
+        now.return_value = 252
+        assert not sensor.available and not alarm.available
+        push(client, {"airQuality": {legacy: {"value": 5, "status": "neutral"}}})
+        coordinator.data = client.snapshot
+        assert sensor.native_value == 5 and sensor.available
+        assert alarm.is_on is False and alarm.available
+        assert observed[-1].metric == canonical and observed[-1].transition == "ended"
+        assert (sensor.unique_id, alarm.unique_id) == unique_ids
+
+
+@pytest.mark.parametrize(("canonical", "legacy"), list(MEASUREMENT_ALIASES.items()))
+async def test_partial_alias_update_preserves_legacy_cached_siblings(
+    load_fixture, canonical, legacy
+):
+    """A status-only frame preserves a legacy value without renewing its age."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    payload["sensors"][0]["airQuality"] = {legacy: {"value": 3, "status": "normal"}}
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    with patch(
+        "custom_components.unifi_air_quality.api.monotonic", return_value=10
+    ) as now:
+        await client.async_get_snapshot()
+        now.return_value = 100
+        push(client, {"airQuality": {legacy: {"status": "high"}}})
+        raw = client.snapshot.devices[0].raw["airQuality"]
+        assert raw[canonical] == {"value": 3, "status": "high"}
+        assert legacy not in raw
+        assert client._metric_verified_at[("anonymous-air-quality-id", canonical)] == 10
+        now.return_value = 131
+        assert not client.is_measurement_fresh("anonymous-air-quality-id", canonical)
+        assert client.is_alarm_fresh("anonymous-air-quality-id", canonical)
+        push(client, {"airQuality": {legacy: {"value": 9}}})
+        assert client.snapshot.devices[0].raw["airQuality"][canonical] == {
+            "value": 9,
+            "status": "high",
+        }
+        assert client.is_measurement_fresh("anonymous-air-quality-id", canonical)
+        assert client.is_alarm_fresh("anonymous-air-quality-id", canonical)

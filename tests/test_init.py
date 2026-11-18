@@ -66,7 +66,8 @@ async def test_setup_and_unload_entry(hass, device_registry) -> None:
         assert get_session.call_args.args == (hass,)
         jar = get_session.call_args.kwargs["cookie_jar"]
         jar.update_cookies({"synthetic": "cookie"}, URL("https://127.0.0.1"))
-        assert jar.filter_cookies(URL("https://127.0.0.1"))
+        # Late Set-Cookie responses cannot override the adapter-owned headers.
+        assert not jar.filter_cookies(URL("https://127.0.0.1"))
         client.start_websocket.assert_called_once()
         forward_setups.assert_awaited_once()
         assert entry.runtime_data.coordinator is coordinator

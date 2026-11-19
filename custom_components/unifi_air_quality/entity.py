@@ -1,4 +1,4 @@
-"""Shared entities for UniFi Protect Air Quality."""
+"""Share device discovery, stable entity identities, and confirmed writes."""
 
 from __future__ import annotations
 
@@ -30,8 +30,10 @@ def async_setup_dynamic_entities(
     async_add_entities: AddConfigEntryEntitiesCallback,
     factory: Callable[[str], Iterable[Entity]],
 ) -> None:
-    """Reconcile each platform using its existing coordinator subscription.
+    """Create each device's platform entities once and track later discoveries.
 
+    The factory receives a Protect device ID and returns that platform's entities.
+    Both discovery and registry-removal listeners are removed on entry unload.
     Keep entities on removal so registry names, IDs and history survive re-pairing.
     Explicit UI removal forgets the submitted identity so re-adoption can create
     entities again. Ordinary Protect disappearance keeps registry metadata.
@@ -88,7 +90,7 @@ def nested_value(
 
 
 def nested_update(path: tuple[str, ...], value: Any) -> dict[str, Any]:
-    """Build a minimal nested private-API PATCH body."""
+    """Wrap a value in the keys of a nonempty path to build a minimal PATCH."""
     update: Any = value
     for key in reversed(path):
         update = {key: update}
@@ -106,8 +108,7 @@ class UnifiAirQualityEntity(CoordinatorEntity[UnifiAirQualityCoordinator]):
         device_id: str,
         entity_key: str,
     ) -> None:
-        """Initialize this component with its entry-scoped dependencies."""
-        # Keep all mutable state scoped to this instance and its config entry.
+        """Bind a device and entity key to stable IDs and shared device metadata."""
         super().__init__(coordinator)
         self._device_id = device_id
         self._attr_unique_id = f"{device_id}_{entity_key}"
@@ -123,7 +124,7 @@ class UnifiAirQualityEntity(CoordinatorEntity[UnifiAirQualityCoordinator]):
 
     @property
     def device(self) -> AirQualityDevice | None:
-        """Return the current device snapshot."""
+        """Look up the current device, or return None after inventory removal."""
         return next(
             (
                 device
@@ -151,11 +152,15 @@ class UnifiAirQualityEntity(CoordinatorEntity[UnifiAirQualityCoordinator]):
         return nested_value(device.raw, path, default=default) if device else default
 
     async def async_write_value(self, path: tuple[str, ...], value: Any) -> None:
-        """Write one setting through the private API adapter."""
+        """Write one nested setting and require confirmation from Protect."""
         await self.async_write_update(nested_update(path, value))
 
     async def async_write_update(self, update: dict[str, Any]) -> None:
-        """Expose actionable, sanitized control errors to Home Assistant."""
+        """Submit a verified settings update and translate adapter errors for HA.
+
+        The adapter publishes only values read back from Protect. A failed or
+        unconfirmed write raises HomeAssistantError instead of optimistic state.
+        """
         try:
             await self.coordinator.client.async_update_device(self._device_id, update)
         except ProtectApiError as err:

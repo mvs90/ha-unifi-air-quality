@@ -1,4 +1,4 @@
-"""Integration and adversarial regressions for issues 1–10."""
+"""Adversarial regressions for freshness, transport, alarms, writes and lifecycle."""
 
 import asyncio
 import json
@@ -219,6 +219,8 @@ async def test_push_during_bootstrap_never_rolls_back_confirmed_state(
     await client.async_get_snapshot()
 
     class ConcurrentResponse(FakeResponse):
+        """Inject a newer alarm push while an older bootstrap body is being read."""
+
         async def json(self, **kwargs):
             """Inject a newer push while the HTTP response is in flight."""
             if model == "sensor":
@@ -253,6 +255,8 @@ async def test_safety_bootstrap_refreshes_unpushed_metrics(load_fixture):
     device_id = "anonymous-air-quality-id"
 
     class ConcurrentResponse(FakeResponse):
+        """Interleave one metric push with a bootstrap refreshing sibling fields."""
+
         async def json(self, **kwargs):
             """Repeat a pushed value while the server returns other current fields."""
             push(client, {"airQuality": {"nox": {"value": 42}}})
@@ -291,6 +295,8 @@ async def test_bootstrap_preserves_device_changes_and_cursor_from_pushes(load_fi
     await client.async_get_snapshot()
 
     class DiscoveryResponse(FakeResponse):
+        """Interleave removal, discovery and cursor changes with an older inventory."""
+
         async def json(self, **kwargs):
             """Deliver topology changes and a newer cursor before HTTP completes."""
             push(client, {}, operation="remove")
@@ -331,6 +337,8 @@ async def test_bootstrap_merges_replaced_metric_shape(latest_scalar, load_fixtur
     await client.async_get_snapshot()
 
     class ShapeChangeResponse(FakeResponse):
+        """Change a pushed reading shape before returning an older bootstrap body."""
+
         async def json(self, **kwargs):
             """Deliver changes while a response with the older shape is in flight."""
             push(client, {"airQuality": {"co2": {"value": 700}}})
@@ -354,6 +362,8 @@ async def test_bootstrap_expires_removed_device_alarm_identity(load_fixture):
     await client.async_get_snapshot()
 
     class RemovedDeviceResponse(FakeResponse):
+        """Inject a final device alarm before returning an empty inventory."""
+
         async def json(self, **kwargs):
             """Receive a last update from a sensor absent in bootstrap discovery."""
             push(client, {"airQuality": {"co2": 750}})
@@ -385,6 +395,8 @@ async def test_stale_bootstrap_does_not_restart_an_ended_alarm(load_fixture):
     )
 
     class StaleAlarmResponse(FakeResponse):
+        """Deliver an alarm end before returning a body that still reports it active."""
+
         async def json(self, **kwargs):
             """Return a pre-end status after the matching end frame is received."""
             client._process_websocket_payload(
@@ -433,6 +445,8 @@ async def test_out_of_order_http_responses_keep_newer_snapshot(load_fixture):
     release = asyncio.Event()
 
     class SlowResponse(FakeResponse):
+        """Hold an old response until a newer successful result is installed."""
+
         async def json(self, **kwargs):
             """Return old data after a newer request has already completed."""
             started.set()

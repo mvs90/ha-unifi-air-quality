@@ -1,8 +1,15 @@
 """Exercise fresh fork install, upstream upgrade and rollback in isolated HA.
 
-All Protect data is synthetic. Each phase starts a separate Python process with
-exactly one component directory and serialized HA config/device/entity storage.
-The parent checkout, real HA configurations and Protect consoles are untouched.
+Run from an existing checkout in the documented test environment. ``--upstream``
+selects a locally available Git ref for a compatible upstream 0.5.4 package;
+it defaults to the pinned UPSTREAM_COMMIT. The worker checks the expected
+0.5.4/0.6.0 manifests, so this is not a migration test for arbitrary versions.
+
+All Protect data is synthetic. Four phases start separate Python processes with
+exactly one component directory. The fresh-fork phase has its own HA storage;
+upstream install, fork upgrade and rollback share serialized config/device/
+entity storage. The checkout, real HA configurations and consoles are untouched.
+The command exits 0 only when all phases pass; failed subprocesses raise errors.
 """
 
 from __future__ import annotations
@@ -40,7 +47,7 @@ def run(
 
 
 def main() -> int:
-    """Swap package files between three fresh processes and compare saved identities."""
+    """Run four isolated package phases and compare their persisted identities."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--upstream", default=UPSTREAM_COMMIT)
     args = parser.parse_args()

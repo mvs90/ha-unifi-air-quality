@@ -45,13 +45,13 @@ def test_sanitize_raw_redacts_unknown_strings_and_secrets() -> None:
 
 
 def test_sanitize_raw_lists_and_unknown_types() -> None:
-    """Verify sanitize raw lists and unknown types."""
+    """Replace unsupported top-level collections and objects with a redaction marker."""
     assert sanitize_raw([1, "private"]) == "**REDACTED**"
     assert sanitize_raw(object()) == "**REDACTED**"
 
 
 async def test_config_entry_diagnostics(hass) -> None:
-    """Verify config entry diagnostics."""
+    """Export health summaries with aliased device IDs and redacted settings."""
     device = AirQualityDevice(
         "sensor",
         "Private room",

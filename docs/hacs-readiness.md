@@ -1,100 +1,92 @@
-# Fork validation and historical upstream report
+# Historical upstream HACS readiness report
 
-The sections below record upstream results; they are not new hardware tests
-for this fork. Current fork validation is defined by its CI workflows and the
-[installation and recovery policy](install-upgrade-rollback.md). User installation
-and configuration steps are in the [README](../README.md#install-the-integration).
-No catalog approval for this fork is claimed.
+This retained report concerns **mvs90/ha-unifi-air-quality**: the review of
+upstream `0.5.3` on **2026-10-28**, followed by the `0.5.4` authentication changes.
+Its test counts, runtime versions, repository observations and hardware checks
+are historical. They are not new tests or catalog approval for this fork.
 
-# HACS default-catalog readiness
+For current work, use the [user installation guide](../README.md#install-the-integration),
+[installation and recovery policy](install-upgrade-rollback.md),
+[contribution guide](../CONTRIBUTING.md) and
+[required check policy](maintainer-ruleset.md). The fork's declared minimum and
+CI baseline is Home Assistant 2026.10.4; the old preview result below is not a
+claim that the current fork has been tested against every later HA release.
 
-Reviewed on 2026-10-28 for release `0.5.3`.
+## Upstream authentication follow-up: 0.5.4
 
-## HACS review follow-up: 0.5.4
-
-Frenck's authentication review is addressed in `0.5.4`: config entries and
-validation attempts now use separate cookie jars. The owned sessions are
-detached on unload, setup failure, and validation completion/cancellation,
+The upstream follow-up addressed Frenck's authentication review: config entries
+and validation attempts used isolated authentication sessions. Owned sessions
+were detached on unload, setup failure and validation completion/cancellation,
 preserving Home Assistant's shared network connector. WebSocket credential
-rejection stops reconnects and requests reauthentication; the client also
-blocks subsequent automatic password attempts until a new client is created.
-The API adapter remains independent of Home Assistant.
+rejection stopped reconnects and requested reauthentication; the client also
+blocked further automatic password attempts until a new client was created.
+The API adapter remained independent of Home Assistant.
 
-Regression tests use synthetic credentials and a loopback HTTP server to
-exercise real Set-Cookie responses, separate accounts, the untouched shared
-session, and cleanup. No live alarms or device-setting writes are required.
-The compatibility results below are the previous 0.5.3 baseline.
+Regression tests used synthetic credentials and a loopback HTTP server for
+Set-Cookie responses, account isolation, the untouched shared session and
+cleanup. They required no live alarms or device-setting writes. The historical
+compatibility results below were recorded for the preceding `0.5.3` baseline.
 
-## Repository and packaging
+## Repository and packaging at the review
 
-The public repository has a description, search topics, issues enabled, and
-an identifiable MIT license. It contains one integration under
-`custom_components/unifi_air_quality`, a root `hacs.json`, installation and
-removal instructions, and published non-prerelease GitHub releases.
+The upstream report recorded a public repository with a description, topics,
+issues enabled, an identifiable MIT license and published non-prerelease GitHub
+releases. It contained one integration under
+`custom_components/unifi_air_quality`, a root `hacs.json`, and installation and
+removal instructions. These release observations concern upstream, not the
+fork's pinned-commit distribution.
 
-The domain `unifi_air_quality` was checked against Home Assistant Core's
-`dev` integration list and does not conflict with a core domain. This is an
-independent custom integration, not an override of a core integration.
+At that review, `unifi_air_quality` was checked against Home Assistant Core's
+`dev` integration list without a domain conflict. The proposed submitter was
+the repository owner using a personal account. The integration had no country
+restriction and was not an alpha/beta override of a Core integration.
 
-The submitting account is the repository owner and is a personal account.
-The integration is not country-restricted, so no `country` restriction is
-needed in `hacs.json`. It is not an alpha/beta fork of a Core integration.
+## Historical Home Assistant compatibility
 
-## Home Assistant compatibility
-
-The complete 257-test suite passed against both actual container runtimes:
+The report recorded 257 tests passing in these container runtimes:
 
 | Runtime | Version | Coverage |
 | --- | --- | --- |
 | Stable container | 2026.10.4 | 99.17% |
 | Preview container | 2026.11.0.dev202610281312 | 99.17% |
 
-The suite includes fresh registration of all 71 entities, 66 enabled by
-default, five NOx entities disabled by default, every translation, custom-name
-preservation, controls, authentication recovery, WebSocket alarms, diagnostics
-redaction, and local brand-image delivery. Only Home Assistant's display of a
-user-named entity changes in the preview: it also includes the device name.
-The exact stored user name and entity ID remain unchanged.
+That suite covered registration of 71 entities, with 66 enabled by default and
+five NOx entities disabled, translations, custom-name preservation, controls,
+authentication recovery, WebSocket alarms, diagnostic redaction and local brand
+images. The preview displayed a device-name prefix for user-named entities while
+preserving the stored user name and entity ID.
 
-The fork supports Home Assistant 2026.10.4 as its tested and audited minimum;
-older 2026.8.x support was withdrawn after the dependency security review.
-The historical upstream preview tests used
-the new official `pytest-home-assistant` package from Core commit
-`4be5ba96f41e0f4052899e0f6e953c5ce2143e3c`, rather than replacing or patching
-Home Assistant itself. The container runner installs test tools separately
-and retains priority for the image's existing runtime packages.
+The upstream preview tests used the official `pytest-home-assistant` package
+from Core commit `4be5ba96f41e0f4052899e0f6e953c5ce2143e3c`. Test tools were installed
+separately, retaining priority for the image's runtime packages. These results
+do not extend the fork's support policy to older HA releases; the fork withdrew
+2026.8.x support after its dependency review.
 
-Separate read-only checks of the current integration in both container images
-successfully retrieved real Protect bootstrap data, connected the WebSocket,
-and observed sensor pushes. A request guard allowed only reads and the login
-needed to establish a session; no device settings were written and no live
-alarms were induced. Credentials, addresses, identifiers, and raw live data
-are not included in this report or its fixtures.
+The original report also recorded read-only checks against Protect in both
+images: bootstrap retrieval, WebSocket connection and sensor pushes. A request
+guard allowed reads and session login, with no device-setting writes or induced
+alarms. Credentials, addresses, identifiers and raw live data were not retained
+in the report or fixtures. These records do not describe hardware checks
+against the current fork.
 
-## Branding and validation
+## Branding and validator history
 
-The selected artwork is shipped locally as `brand/icon.png` and
-`brand/icon@2x.png`. Home Assistant supports local custom-integration images
-since 2026.3, earlier than this integration's minimum supported HA version.
-A separate submission to `home-assistant/brands` is not required.
+The reviewed upstream release shipped local `brand/icon.png` and
+`brand/icon@2x.png`. Home Assistant supports local custom-integration brand
+images from 2026.3. The report required the full HACS validator with no ignored
+checks, plus Ruff, tests and Hassfest before publishing a release for submission.
+It omitted an optional integration-category manifest field because the validator
+used at that time rejected it. That observation is tied to the historical
+validator and should not be treated as a permanent manifest restriction.
 
-The HACS workflow includes every check: it has no `ignore` input. Tests,
-Ruff, HACS, and Hassfest must all pass on the final release commit. Publish
-the full GitHub release after those checks, rather than only a tag,
-so the submitted release includes the artwork and the complete validator.
+## Catalog submission
 
-Optional integration categories are omitted because the current Hassfest
-validator rejects that manifest field. No validation check is bypassed.
-
-## Submission
-
-The repository is not yet included in `hacs/default`. After the release
-checks pass, the owner can propose `mvs90/ha-unifi-air-quality` in that
-repository's alphabetically sorted `integration` list and complete its PR
-template from a new branch based on `hacs/default:master`. The PR must allow
-maintainer edits and link the successful HACS/Hassfest runs and the release
-published afterward. No review requests should be sent. This report does not
-imply HACS maintainer approval; catalog acceptance remains a separate review.
+The original report prepared submission of `mvs90/ha-unifi-air-quality` to the
+HACS default catalog. It did not constitute catalog acceptance. Submitting this
+fork is a separate action under its own repository name and requires a fresh
+review of the current official requirements, release and validator results.
+For ordinary installation, follow the custom-repository instructions in the
+user guide; this report is not an installation prerequisite.
 
 ## References
 

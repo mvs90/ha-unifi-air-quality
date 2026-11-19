@@ -1,4 +1,12 @@
-"""Fail closed on untriaged advisories in the resolved HA/test environment."""
+"""Validate pip-audit JSON against the scoped repository exception policy.
+
+Run from the repository root as
+``python dev/check_dependency_audit.py /path/to/pip-audit.json``. The report must
+contain a successfully audited inventory, including the HA version in hacs.json.
+Only exact, unexpired exceptions in security-advisories.json are accepted. Exit 0
+means the report meets that policy; findings or an invalid baseline exit 1.
+Malformed input raises an error and therefore also fails the check.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +18,12 @@ from pathlib import Path
 
 
 def audit_findings(report: dict, exceptions: list[dict], today: date) -> list[str]:
-    """Match individual advisories against package, version and expiry limits."""
+    """Return failure descriptions for invalid, skipped or unaccepted findings.
+
+    A reviewed exception must match the package, version and advisory ID and have
+    an owner, a reason and an expiry on or after ``today``. Only this repository's
+    editable distribution may be skipped. An empty audited inventory fails closed.
+    """
     failures = []
     # Missing dependency data is a scanner/service failure, never a clean audit.
     if not isinstance(report.get("dependencies"), list) or not report["dependencies"]:
@@ -63,7 +76,7 @@ def audit_findings(report: dict, exceptions: list[dict], today: date) -> list[st
 
 
 def main() -> int:
-    """Validate an audit report using the reviewed repository exception policy."""
+    """Enforce the report policy and HA baseline, then print the inventory hash."""
     report = json.loads(Path(sys.argv[1]).read_text())
     exceptions = json.loads(Path("security-advisories.json").read_text())
     failures = audit_findings(report, exceptions, date.today())

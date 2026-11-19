@@ -23,6 +23,7 @@ network. It does not need MQTT or an additional bridge.
 - [Update or restore an installation](#update-or-restore-an-installation)
 - [Troubleshooting](#troubleshooting)
 - [Remove a sensor or the integration](#remove-a-sensor-or-the-integration)
+- [Further help](#further-help)
 
 ## Before you start
 
@@ -165,11 +166,13 @@ overwrite a manually maintained copy.
 | **Password** | That account's local password. |
 | **Verify TLS certificate** | Leave enabled when Home Assistant trusts the console's certificate and the hostname matches it. |
 
-5. Submit the form. Home Assistant checks the connection and creates the
-   integration entry.
-6. Open the entry and its device list. Select your UP-AirQuality sensor and
+After completing the form:
+
+1. Submit it. Home Assistant checks the connection and creates the integration
+   entry.
+2. Open the entry and its device list. Select your UP-AirQuality sensor and
    compare its first readings with Protect. Allow about one minute for a refresh.
-7. Assign the device to a room and add the measurements you want to your
+3. Assign the device to a room and add the measurements you want to your
    dashboard using Home Assistant's normal dashboard editor.
 
 Everything is configured through the interface. No `configuration.yaml`
@@ -212,9 +215,12 @@ settings. The firmware must also supply a reading. Enabling an entity cannot
 create a value that the device does not provide.
 
 Readings normally arrive automatically. A refresh also runs about once a minute.
-When a reading has not been confirmed for roughly two minutes, it becomes
-unavailable instead of presenting old data as current. Readings return
-automatically after the connection and data recover.
+Each measurement and each alarm has its own freshness check: an update to one
+does not make the others current. When a reading has not been confirmed for
+roughly two minutes, it becomes unavailable instead of presenting old data as
+current. A sensor reported offline, a rejected login or an unsupported response
+can make entities unavailable sooner. Readings return automatically after the
+connection and data recover.
 
 ### Device settings
 
@@ -224,10 +230,13 @@ console supplies the setting:
 | Setting | What you can change |
 | --- | --- |
 | Status light and activity feedback | On or off |
-| LED ring | On/off, brightness, and whether it displays CO₂ or air quality |
-| Night mode | On/off, brightness, start time and end time |
-| Vape detection | On/off and sensitivity |
+| LED ring | On/off, brightness from 0–100%, and whether it displays CO₂ or air quality |
+| Night mode | On/off, brightness from 0–100%, start time and end time in `HH:MM` |
+| Vape detection | On/off and sensitivity from 0–100% |
 | Measurement alarms | Enable state and lower/upper thresholds; vape has only an editable upper threshold |
+
+Turning the LED ring off sets its brightness to zero. Turning it on restores
+its remembered brightness, or 100% if no previous value is known.
 
 Changes are sent to Protect and affect the physical sensor. They require write
 permission on the local account. Home Assistant displays the value confirmed by
@@ -241,10 +250,12 @@ switch and threshold controls configure the alarm.
 
 In Home Assistant's device view, the alarm symbols show the current state:
 
-- **OK:** a green check mark in a circle.
-- **Alarm active:** a red exclamation mark in a circle.
-- **Unknown:** a question mark in a circle.
-- **Unavailable:** Home Assistant's normal unavailable-state presentation.
+| State | Symbol | Meaning |
+| --- | --- | --- |
+| **OK** | Green check mark in a circle | Current information confirms no active alarm for this measurement. |
+| **Alarm active** | Red exclamation mark in a circle | A current alarm event or measurement status indicates an alarm. |
+| **Unknown** | Question mark in a circle | Recent alarm information exists, but the overall alarm state cannot yet be resolved. |
+| **Unavailable** | Home Assistant's normal unavailable symbol | The device or this alarm has no usable, current confirmation. |
 
 The green check returns when current data confirms OK.
 
@@ -254,8 +265,34 @@ The green check returns when current data confirms OK.
 - Vape behaves differently: disabling its alarm retains the device-managed
   thresholds. Changing vape sensitivity also changes the upper vape threshold.
 - An unset threshold is displayed as `0` in the number control. Check the
-  **Alerts** switch to distinguish an unset threshold from an enabled alarm.
+  **Alerts** switch to distinguish an unset threshold from an enabled alarm. A
+  threshold field that the firmware does not supply remains unknown; entering
+  `0` yourself sets an actual threshold rather than clearing it.
 - An unknown or unavailable alarm state does **not** mean that the alarm cleared.
+
+### Alarm pictures on dashboards
+
+The green and red symbols are entity pictures supplied by this integration.
+Dashboard cards decide whether to display them. A Tile card uses Home Assistant's
+normal state icon by default, so a grey OK icon on an automatic room view can
+still accompany a green check on the device page.
+
+To show the colored pictures, add a Tile card to a dashboard you can edit and
+enable **Show entity picture**. The equivalent card configuration is:
+
+```yaml
+type: tile
+entity: binary_sensor.your_sensor_co2_alarm
+show_entity_picture: true
+```
+
+Replace the example entity ID with the actual alarm entity from your device.
+This is dashboard configuration; it does not belong in `configuration.yaml`.
+Automatic room views control their own card settings. Use an editable dashboard
+when you want to choose this presentation. See Home Assistant's
+[Tile card documentation](https://www.home-assistant.io/dashboards/tile/).
+
+### Use alarms in automations
 
 For a simple notification, create an automation under **Settings → Automations
 & scenes**. Use a state trigger for the relevant alarm binary sensor, set **To**
@@ -265,7 +302,10 @@ still active when the connection recovers can therefore trigger a notification.
 
 For event-based automations, the device also has an **Air quality alarm event**
 entity. Example event types are `co2_alarm_started`, `co2_alarm_ended`,
-`vape_alarm_started` and `vape_alarm_ended`.
+`vape_alarm_started` and `vape_alarm_ended`. This entity records transitions
+received from Protect; its timestamp and last event type are not the current
+alarm state. Use the corresponding **Alarm** binary sensor when you need to
+check whether an alarm is currently active.
 
 ## Change the connection or password
 
@@ -293,7 +333,7 @@ entry for that console.
    - **HACS:** Open this repository in HACS and install its offered update.
      **Redownload** reinstalls the currently available package.
    - **Manual:** Download the ZIP linked in the repository's
-     [current README](https://github.com/Daniel-Dietz/ha-unifi-air-quality#readme)
+     [current README](https://github.com/Daniel-Dietz/ha-unifi-air-quality/blob/main/README.md)
      and extract it outside the active component folder. Under **Settings →
      Devices & services**, disable **every** UniFi Protect Air Quality console
      entry using **⋮ → Disable**. If Home Assistant requests a restart, complete
@@ -327,7 +367,9 @@ longer opens, follow the official
 | **TLS/certificate error** | Check that the host matches the certificate and that Home Assistant trusts its issuer. See [certificate errors](#certificate-errors-during-setup). |
 | **Setup succeeds but no devices appear** | Confirm the UP-AirQuality is adopted in this console and visible to the configured account. Allow a refresh to complete. |
 | **Measurements are unavailable** | Check the sensor is online in Protect and that Protect supplies that reading. Restore connectivity and wait for a refresh. |
-| **OK still shows a grey check mark** | Update the integration, restart Home Assistant and refresh the page. The green check is supplied for a confirmed, available OK state. Custom dashboard cards may override or ignore entity pictures; Home Assistant's device view displays them. |
+| **OK is green on the device page but grey in a room or dashboard** | The card is using Home Assistant's normal icon. Enable **Show entity picture** on an editable Tile card; see [alarm pictures on dashboards](#alarm-pictures-on-dashboards). Restarting does not change a card's settings. |
+| **OK is grey on the device page too** | Check that the alarm is available and confirmed OK, update the integration if needed, restart Home Assistant and refresh the browser. Unknown and unavailable states do not use the green picture. |
+| **Measurements work but an alarm is unavailable** | A numeric reading alone does not confirm an alarm state. Protect must supply a recent status or alarm event for that measurement. See [diagnostic freshness](docs/diagnostic-health.md#device-and-metric-freshness). |
 | **NOx is missing or has no value** | Enable the relevant NOx entities. Some firmware does not provide a numeric NOx reading. |
 | **Measurements work but controls fail** | Give the local account permission to change the sensor's settings in Protect. Read access alone is insufficient for controls. |
 | **An alarm cannot be enabled** | Set a lower or upper threshold first. |
@@ -340,8 +382,9 @@ For more details, open **Settings → System → Logs** and look for
 **⋮ → Download diagnostics** menu.
 
 If you need help, [open an issue](https://github.com/Daniel-Dietz/ha-unifi-air-quality/issues).
-Include the installation ZIP filename or installed version, Home Assistant and
-Protect versions, what you expected, and what happened. Review logs and
+Include the installation method and exact installed commit or original ZIP
+filename, Home Assistant, Protect and sensor firmware versions, what you
+expected, and what happened. Review logs and
 diagnostics before attaching them: measurements and settings can still describe
 your home. Never include passwords, tokens or raw unreviewed Protect responses.
 
@@ -360,6 +403,13 @@ console still uses them.
 files through Marketplace/HACS, or remove
 `custom_components/unifi_air_quality` for a manual installation. Restart Home
 Assistant. This permanently removes the integration setup.
+
+## Further help
+
+- [Installation, migration and recovery details](docs/install-upgrade-rollback.md)
+- [Understand diagnostics and data freshness](docs/diagnostic-health.md)
+- [Device discovery, removal and re-adoption](docs/device-lifecycle.md)
+- [Documentation index](docs/README.md)
 
 ## License
 

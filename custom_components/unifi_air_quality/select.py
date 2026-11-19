@@ -43,8 +43,7 @@ class RingLedMetricSelect(UnifiAirQualityEntity, SelectEntity):
     _attr_options = list(LED_METRIC_VALUES)
 
     def __init__(self, coordinator: UnifiAirQualityCoordinator, device_id: str) -> None:
-        """Initialize this component with its entry-scoped dependencies."""
-        # Keep all mutable state scoped to this instance and its config entry.
+        """Create the stable ring-metric selector for one Protect device."""
         super().__init__(coordinator, device_id, LED_METRIC_DESCRIPTION.key)
 
     @property

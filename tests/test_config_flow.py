@@ -26,7 +26,7 @@ USER_INPUT = {
 
 
 def _snapshot(console_id: str = "console-id") -> ProtectSnapshot:
-    """Provide snapshot for the isolated regression scenario."""
+    """Return an empty synthetic inventory with a configurable console identity."""
     return ProtectSnapshot(
         console_id=console_id,
         console_name="Protect",
@@ -37,7 +37,7 @@ def _snapshot(console_id: str = "console-id") -> ProtectSnapshot:
 
 
 async def test_user_form(hass) -> None:
-    """Verify user form."""
+    """Start setup with the connection form when no user input is supplied."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -46,7 +46,7 @@ async def test_user_form(hass) -> None:
 
 
 async def test_user_success(hass) -> None:
-    """Verify user success."""
+    """Store validated connection data and close the temporary validation client."""
     with patch(
         "custom_components.unifi_air_quality.config_flow.PrivateProtectClient"
     ) as client_cls:
@@ -63,7 +63,7 @@ async def test_user_success(hass) -> None:
 
 
 async def test_user_duplicate(hass) -> None:
-    """Verify user duplicate."""
+    """Reject a second config entry for the same validated console identity."""
     with patch(
         "custom_components.unifi_air_quality.config_flow.PrivateProtectClient"
     ) as client_cls:
@@ -80,7 +80,7 @@ async def test_user_duplicate(hass) -> None:
 
 
 async def test_user_errors(hass) -> None:
-    """Verify user errors."""
+    """Map auth, connectivity, protocol and unexpected failures to form errors."""
     cases = (
         (ProtectInvalidAuth(), "invalid_auth"),
         (ProtectCannotConnect(), "cannot_connect"),
@@ -101,7 +101,7 @@ async def test_user_errors(hass) -> None:
 
 
 async def test_reauth_success(hass) -> None:
-    """Verify reauth success."""
+    """Save the replacement password after validating the original console."""
     entry = MockConfigEntry(domain=DOMAIN, data=USER_INPUT, unique_id="console-id")
     entry.add_to_hass(hass)
     with (
@@ -126,7 +126,7 @@ async def test_reauth_success(hass) -> None:
 
 
 async def test_reauth_errors(hass) -> None:
-    """Verify reauth errors."""
+    """Keep reauthentication open with the mapped auth or connectivity error."""
     entry = MockConfigEntry(domain=DOMAIN, data=USER_INPUT, unique_id="console-id")
     entry.add_to_hass(hass)
     for error, expected in (

@@ -1,4 +1,9 @@
-"""Keep function headers present across integration, developer tools and tests."""
+"""Require nonempty function docstrings across integration, tools and tests.
+
+Source inspection includes methods, async functions and nested callbacks without
+importing optional dependencies. This presence check does not replace review of
+the descriptions' accuracy or completeness.
+"""
 
 import ast
 from pathlib import Path

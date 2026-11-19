@@ -1,4 +1,4 @@
-"""UniFi Protect Air Quality integration."""
+"""Set up entry-scoped clients, platforms, and safe device removal."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ PLATFORMS = [
 
 @dataclass(slots=True)
 class UnifiAirQualityRuntimeData:
-    """Objects belonging to one config entry."""
+    """Client and coordinator owned by one configured Protect console."""
 
     client: PrivateProtectClient
     coordinator: UnifiAirQualityCoordinator
@@ -46,7 +46,7 @@ type UnifiAirQualityConfigEntry = ConfigEntry[UnifiAirQualityRuntimeData]
 async def async_setup_entry(
     hass: HomeAssistant, entry: UnifiAirQualityConfigEntry
 ) -> bool:
-    """Set up UniFi Protect Air Quality from a config entry."""
+    """Create an isolated HTTP session and release it if entry setup fails."""
     # Only generation-checked adapter headers own authentication cookies; an old
     # response must not overwrite a renewed session through automatic storage.
     session = async_create_clientsession(
@@ -64,7 +64,11 @@ async def async_setup_entry(
 async def _async_setup_entry(
     hass: HomeAssistant, entry: UnifiAirQualityConfigEntry, session: ClientSession
 ) -> bool:
-    """Set up one entry, transferring ownership of its isolated session."""
+    """Load the first inventory and platforms before starting background updates.
+
+    The client owns the supplied session after successful setup. Registry
+    metadata follows later inventories; disappearing devices remain registered.
+    """
     client = PrivateProtectClient(
         session,
         host=entry.data[CONF_HOST],
@@ -104,7 +108,7 @@ async def _async_setup_entry(
 async def async_unload_entry(
     hass: HomeAssistant, entry: UnifiAirQualityConfigEntry
 ) -> bool:
-    """Unload a config entry."""
+    """Stop the client only after every platform has successfully unloaded."""
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
     await entry.runtime_data.client.async_close()

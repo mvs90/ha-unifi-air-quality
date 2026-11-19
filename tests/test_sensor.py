@@ -12,7 +12,7 @@ from custom_components.unifi_air_quality.sensor import (
 
 
 def _device(*, connected: bool = True) -> AirQualityDevice:
-    """Provide device for the isolated regression scenario."""
+    """Build a device with CO2, zero-valued vape and malformed humidity readings."""
     return AirQualityDevice(
         "device-id",
         "Office air",
@@ -30,7 +30,7 @@ def _device(*, connected: bool = True) -> AirQualityDevice:
 
 
 def _coordinator(device: AirQualityDevice):
-    """Provide coordinator for the isolated regression scenario."""
+    """Wrap one synthetic device in a successful mock coordinator snapshot."""
     coordinator = MagicMock()
     coordinator.data = ProtectSnapshot("console", "Protect", "6.2", "1", (device,))
     coordinator.last_update_success = True
@@ -82,7 +82,7 @@ def test_tvoc_is_an_unscaled_index() -> None:
 
 
 def test_invalid_or_missing_measurement_is_unknown() -> None:
-    """Verify invalid or missing measurement is unknown."""
+    """Return no native value for malformed or absent readings at the model boundary."""
     coordinator = _coordinator(_device())
     humidity = next(item for item in SENSOR_DESCRIPTIONS if item.key == "humidity")
     pm10 = next(item for item in SENSOR_DESCRIPTIONS if item.key == "pm10")

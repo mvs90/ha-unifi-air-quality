@@ -42,8 +42,7 @@ class UnifiAirQualityAlarmEvent(UnifiAirQualityEntity, EventEntity):
     _attr_event_types = ALARM_EVENT_TYPES
 
     def __init__(self, coordinator: UnifiAirQualityCoordinator, device_id: str) -> None:
-        """Initialize this component with its entry-scoped dependencies."""
-        # Keep all mutable state scoped to this instance and its config entry.
+        """Create the stable per-device entity for normalized alarm transitions."""
         super().__init__(coordinator, device_id, "air_quality_alarm_event")
 
     async def async_added_to_hass(self) -> None:
@@ -55,7 +54,11 @@ class UnifiAirQualityAlarmEvent(UnifiAirQualityEntity, EventEntity):
 
     @callback
     def _handle_alarm_event(self, event: ProtectAlarmEvent) -> None:
-        """Expose supported normalized alarm transitions for this device."""
+        """Publish this device's transition with metric and optional status/value.
+
+        The adapter already coalesces sensor and event alarm sources. This
+        entity forwards supported aggregate transitions without replaying history.
+        """
         # Filter by device and public event type before triggering HA automations.
         if event.device_id != self._device_id:
             return

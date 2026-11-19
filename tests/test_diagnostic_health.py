@@ -19,7 +19,7 @@ from .test_recovery import push
 
 
 async def _diagnostic_entry(load_fixture):
-    """Create an entry whose synthetic private snapshot was verified at time100."""
+    """Create an entry whose synthetic snapshot was verified at monotonic time 100."""
     payload = json.loads(load_fixture("bootstrap_nox.json"))
     payload["sensors"][0]["name"] = "Private room"
     session = FakeSession(FakeResponse(), FakeResponse(payload=payload))

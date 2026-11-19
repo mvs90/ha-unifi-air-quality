@@ -1,5 +1,9 @@
 # Install, migrate and roll back a pinned fork build
 
+For normal installation and configuration, start with the [user guide](../README.md).
+This page covers exact build identification, package replacement and recovery
+while retaining an existing Home Assistant setup.
+
 ## Supported distribution and identity
 
 The fork identifies this change set as **0.6.0** in `manifest.json`,
@@ -40,9 +44,11 @@ with its own full backup; this component's rollback cannot downgrade HA itself.
    `custom_components/unifi_air_quality` outside the active component directory.
 2. Select the full accepted commit from the fork's merged PR and verify its check
    and review results. Download that exact Git commit, not the branch ZIP. For
-   example, on a separate machine, set `PINNED_COMMIT` to that full SHA and run:
+   example, on a separate machine, replace `FULL_ACCEPTED_COMMIT_SHA` below with
+   that full SHA, then run:
 
    ```bash
+   PINNED_COMMIT='FULL_ACCEPTED_COMMIT_SHA'
    git clone --no-checkout https://github.com/Daniel-Dietz/ha-unifi-air-quality.git fork-staging
    git -C fork-staging fetch origin "$PINNED_COMMIT"
    git -C fork-staging checkout --detach "$PINNED_COMMIT"
@@ -98,9 +104,10 @@ restart before replacing files, replace the complete component folder, restart
 HA, then enable those same entries. Disabling preserves their configuration.
 This also applies when restoring a saved component package.
 
-Marketplace's **Delete and uninstall** removes the integration entries, devices
-and entities. It is not equivalent to the HACS package-only removal described
-above. Keep using Marketplace's update action for a Marketplace-managed copy.
+Marketplace's [**Delete and uninstall**](https://www.home-assistant.io/integrations/marketplace/#uninstalling-a-repository)
+removes the integration entries, devices and entities. It is not equivalent to
+the HACS package-only removal described above. Keep using Marketplace's update
+action for a Marketplace-managed copy.
 
 When immutable fork releases become available, HACS can manage the fork custom
 repository. Select a concrete release in HACS, record its SHA/version, and use
@@ -115,10 +122,11 @@ the config entry and `.storage`; do not delete/recreate entities. Confirm the
 same identity/customization checklist and readings. Version 0.6.0 keeps config
 entry schema version 1 and does not require a destructive data migration.
 
-The disposable test below proves a return to upstream 0.5.4 preserves stored
-identities; it does not make upstream 0.5.4 a supported security baseline for this
-fork. Prefer a previously accepted fork commit for normal rollback. If the
-problem also changed HA Core or other integrations, use the matching full HA
+The disposable test below checks preserved identities for its synthetic
+upstream 0.5.4 fixture; it does not make upstream 0.5.4 a supported security
+baseline or guarantee recovery of every installation. Prefer a previously
+accepted fork commit for normal rollback. If the problem also changed HA Core
+or other integrations, use the matching full HA
 backup rather than assuming component files alone restore those changes.
 
 ## Reconfigure host, port or certificates
@@ -129,32 +137,43 @@ new endpoint, checks the returned console ID against the existing entry, then
 updates and reloads that entry. It preserves its ID, options and registry names.
 A certificate failure or a different console leaves the saved settings intact.
 For certificate migration, install a runtime-trusted CA certificate with a
-matching hostname first, then enable verification in Reconfigure. If credentials
-also changed, complete reauthentication first. Do not recreate the config entry
-to change an address or certificate choice.
+matching hostname first, then enable verification in Reconfigure. If the password
+also changed, complete reauthentication first. Reauthentication replaces the
+password for the saved username; neither flow changes that username. Do not
+recreate the config entry to change an address or certificate choice.
 
 ## Reproducible disposable validation
 
-Run `python dev/run_migration_smoke.py` in the documented test environment. It
-exports upstream **0.5.4** at commit
+Run `python dev/run_migration_smoke.py` from the repository root in the
+[test environment](../CONTRIBUTING.md#local-test-environment), with complete Git
+history available. It exports upstream **0.5.4** at commit
 `f4692adaffc2310974efd42a2b3856a156396a8a` and uses the current checkout for the
-fork, asserting the loaded module path and manifest version. Each phase runs a separate HA 2026.10.4 process with exactly one package:
+fork, asserting the loaded module path and manifest version. In the documented
+HA 2026.10.4 environment, each phase runs a separate process with exactly one
+package:
 
 | Phase | Verified result |
 | --- | --- |
-| Fresh fork install | All 71 entities register on seven platforms |
+| Fresh fork install | The fixture's 71 entities register on seven platforms, including five disabled NOx entities |
 | Upstream install | One console entry and customized entity/device registry stored |
 | Upgrade to fork | Entry/console/entity IDs, integration/entity options, user names and disabled state unchanged |
 | Rollback to upstream | The same stored identities and customizations remain unchanged |
 
-The harness serializes the real HA config-entry, entity-registry and device-
-registry stores between processes. It uses synthetic Protect data, and mocks
-only the Protect client and test storage I/O. It does not contact hardware or
-operate the HACS UI. HACS download/source selection is therefore documented but
+The harness serializes HA config-entry, entity-registry and device-registry
+stores between processes. It uses synthetic Protect data and a mocked Protect
+client, with test helpers providing isolated HA storage. It does not contact
+hardware or operate the HACS UI. HACS download/source selection is therefore documented but
 not claimed as an automated UI test. A maintainer should additionally verify
 source selection in a disposable HACS instance when publishing the first tagged
 release. This distinction keeps the existing reproducible package/HA evidence
 separate from any future HACS release test.
+
+The runner exports the default upstream commit from the local Git object
+database; it does not download a missing commit automatically. Use a full clone
+and fetch the referenced history if Git cannot resolve it. Its `--upstream`
+override selects another locally available ref with the same expected upstream
+package version (`0.5.4`); it is not a general migration test for arbitrary
+releases.
 
 References: [HACS release behavior](https://www.hacs.xyz/docs/publish/integration/#github-releases-optional)
 and [HA reconfiguration](https://contributors.home-assistant.io/core/integrations/reauth-reconfigure/#reconfiguration).

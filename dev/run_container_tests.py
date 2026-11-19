@@ -31,7 +31,12 @@ PREVIEW_TEST_HELPERS = (
 
 
 def main() -> int:
-    """Install isolated test tools and exercise the unchanged HA runtime."""
+    """Install test helpers in a temporary target and return pytest's exit code.
+
+    HA_TEST_HELPERS may override the helper requirement; otherwise stable and .dev
+    HA builds select their corresponding pinned helpers. Existing image packages
+    retain import priority, and temporary tooling/cache paths are removed on exit.
+    """
     version = metadata.version("homeassistant")
     helpers = os.environ.get(
         "HA_TEST_HELPERS",

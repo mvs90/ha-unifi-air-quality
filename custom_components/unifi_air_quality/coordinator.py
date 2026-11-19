@@ -1,4 +1,4 @@
-"""Update coordinator for UniFi Protect Air Quality."""
+"""Publish Protect snapshots and enforce availability and refresh deadlines."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class UnifiAirQualityCoordinator(DataUpdateCoordinator[ProtectSnapshot]):
-    """Combine WebSocket pushes with an infrequent bootstrap safety refresh."""
+    """Combine push updates with periodic full inventories and freshness checks."""
 
     def __init__(
         self,
@@ -34,8 +34,7 @@ class UnifiAirQualityCoordinator(DataUpdateCoordinator[ProtectSnapshot]):
         entry: ConfigEntry,
         client: PrivateProtectClient,
     ) -> None:
-        """Initialize this component with its entry-scoped dependencies."""
-        # Keep all mutable state scoped to this instance and its config entry.
+        """Bind one entry's client callbacks to Home Assistant update handling."""
         super().__init__(
             hass,
             logger=_LOGGER,
@@ -53,7 +52,7 @@ class UnifiAirQualityCoordinator(DataUpdateCoordinator[ProtectSnapshot]):
 
     @callback
     def async_start_health_monitor(self) -> None:
-        """Start availability deadlines only after all platforms are loaded."""
+        """Check freshness every five seconds until this entry is unloaded."""
         self.config_entry.async_on_unload(
             async_track_time_interval(
                 self.hass, self._check_freshness, timedelta(seconds=5)
@@ -62,7 +61,7 @@ class UnifiAirQualityCoordinator(DataUpdateCoordinator[ProtectSnapshot]):
 
     @callback
     def _check_freshness(self, _now) -> None:
-        """Re-evaluate availability even when the stream produces no callbacks."""
+        """Notify entities of elapsed deadlines and schedule an overdue resync."""
         self.async_update_listeners()
         # Pushes reset HA's ordinary polling timer. Keep the safety resync bounded.
         last_success = self.client.last_successful_refresh
@@ -78,7 +77,7 @@ class UnifiAirQualityCoordinator(DataUpdateCoordinator[ProtectSnapshot]):
 
     @callback
     def _handle_auth_failure(self) -> None:
-        """Report a stream rejection and request new credentials."""
+        """Report terminal authentication failure and request credentials once."""
         self.async_set_update_error(
             ConfigEntryAuthFailed("Protect authentication failed")
         )
@@ -87,7 +86,12 @@ class UnifiAirQualityCoordinator(DataUpdateCoordinator[ProtectSnapshot]):
             self.config_entry.async_start_reauth(self.hass)
 
     async def _async_update_data(self) -> ProtectSnapshot:
-        """Refresh confirmed state and translate transport failures for HA."""
+        """Refresh state, retaining cached data only during brief network failures.
+
+        Authentication rejection requests reauthentication; incompatible data
+        raises UpdateFailed immediately. Returning a cached snapshot does not
+        renew individual measurement or alarm freshness timestamps.
+        """
         # Brief network outages retain fresh data; protocol/auth errors fail closed.
         self._last_refresh_attempt = monotonic()
         try:

@@ -1,4 +1,11 @@
-"""Disposable HA worker used by run_migration_smoke.py across package versions."""
+"""Run one isolated phase of dev/run_migration_smoke.py.
+
+The runner copies this file to a temporary pytest workspace, supplies synthetic
+fixtures and exactly one component version, and sets MIGRATION_PHASE and
+MIGRATION_STATE. This worker is not an independently runnable repository test.
+The JSON state file carries HA storage and identity comparisons between the
+upstream-install, fork-upgrade and upstream-rollback subprocesses.
+"""
 
 from __future__ import annotations
 

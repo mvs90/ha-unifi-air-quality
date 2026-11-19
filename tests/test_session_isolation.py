@@ -30,7 +30,7 @@ async def test_login_cookies_do_not_reach_shared_or_other_entry_session(
     seen_accounts = []
 
     async def login(request):
-        """Provide login for the isolated regression scenario."""
+        """Set a synthetic session cookie identifying the supplied test account."""
         account = (await request.json())["username"]
         response = web.json_response({})
         response.set_cookie("SESSION", account)
@@ -47,7 +47,7 @@ async def test_login_cookies_do_not_reach_shared_or_other_entry_session(
         )
 
     async def cookies(request):
-        """Provide cookies for the isolated regression scenario."""
+        """Echo the session account so the test can detect credential leakage."""
         return web.json_response({"account": request.cookies.get("SESSION")})
 
     app = web.Application()
@@ -114,7 +114,7 @@ async def test_config_validation_closes_session_on_every_exit(hass, error):
     captured = []
 
     def create_client(session, **kwargs):
-        """Provide create client for the isolated regression scenario."""
+        """Capture sessions and inject a client or a construction failure."""
         captured.append(session)
         if error:
             raise error
@@ -151,7 +151,7 @@ async def test_setup_entries_own_distinct_sessions_and_close_on_unload(hass):
     sessions = []
 
     def create_client(session, **kwargs):
-        """Provide create client for the isolated regression scenario."""
+        """Capture entry sessions and detach each one when its fake client closes."""
         sessions.append(session)
         client = AsyncMock()
         from unittest.mock import MagicMock

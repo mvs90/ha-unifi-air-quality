@@ -21,7 +21,11 @@ class WebsocketDecodeError(ValueError):
 
 
 def _decode_frame(payload: bytes, offset: int) -> tuple[dict[str, Any], int]:
-    """Decode one Protect frame and return it with the next offset."""
+    """Decode a bounded JSON-object frame and return its exclusive end offset.
+
+    Reject unsupported encodings, malformed or oversized compressed payloads,
+    and incomplete headers with WebsocketDecodeError.
+    """
     try:
         _packet_type, payload_format, deflated, _unknown, size = _HEADER.unpack_from(
             payload, offset
@@ -61,7 +65,11 @@ def _decode_frame(payload: bytes, offset: int) -> tuple[dict[str, Any], int]:
 
 
 def decode_message(payload: bytes) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Decode action and data frames from a private Protect message."""
+    """Return exactly two JSON objects: the action header and update payload.
+
+    Both frames must fit the wire and expansion limits. Missing frames or
+    trailing bytes raise WebsocketDecodeError rather than partial acceptance.
+    """
     if len(payload) > MAX_MESSAGE_BYTES:
         raise WebsocketDecodeError("WebSocket message exceeds wire limit")
     action, offset = _decode_frame(payload, 0)

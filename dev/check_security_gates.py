@@ -1,4 +1,9 @@
-"""Prove security scanners detect synthetic violations without exposing secrets."""
+"""Check that Ruff and detect-secrets detect synthetic violations.
+
+Run ``python dev/check_security_gates.py`` in an environment containing both
+tools. The temporary Python sample is scanned, never executed. Exit 0 confirms
+both detectors fired; missing detection raises an error and fails the command.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +17,7 @@ from detect_secrets.settings import default_settings
 
 
 def main() -> int:
-    """Require positive static-analysis and secret-detector results."""
+    """Require Ruff S307 and a synthetic AWS-shaped secret to trigger detection."""
     with TemporaryDirectory() as directory:
         sample = Path(directory) / "violation.py"
         # S307 must reject dynamic execution even if no real payload is executed.

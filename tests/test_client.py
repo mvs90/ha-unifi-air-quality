@@ -41,8 +41,10 @@ class FakeResponseStream:
 
 
 class FakeResponse:
+    """Model an async HTTP response with injected status, JSON and failure behavior."""
+
     def __init__(self, *, status=200, payload=None, headers=None, error=None):
-        """Initialize the synthetic test object without external services."""
+        """Store the synthetic status, payload, headers and optional exception."""
         self.status = status
         self._payload = payload
         self.headers = CIMultiDict(headers or {})
@@ -55,28 +57,30 @@ class FakeResponse:
         return self
 
     async def __aexit__(self, *args):
-        """Implement the test double's aexit protocol."""
+        """Leave the synthetic response context without suppressing exceptions."""
         return None
 
     def raise_for_status(self):
-        """Provide raise for status for the isolated regression scenario."""
+        """Raise the configured exception without real HTTP status handling."""
         if self._error:
             raise self._error
 
     async def json(self, **kwargs):
-        """Provide json for the isolated regression scenario."""
+        """Return the configured JSON value, or raise an injected decoding exception."""
         if isinstance(self._payload, Exception):
             raise self._payload
         return self._payload
 
 
 class FakeSession:
+    """Record HTTP/WS calls and serve configured responses without opening sockets."""
+
     def detach(self):
-        """Provide detach for the isolated regression scenario."""
+        """Mark the fake session closed without owning a real network connector."""
         self.closed = True
 
     def __init__(self, post, get, websocket=None, patch=None):
-        """Initialize the synthetic test object without external services."""
+        """Configure response objects or response queues and initialize call records."""
         self.post_response = post
         self.get_response = get
         self.websocket = websocket
@@ -87,22 +91,22 @@ class FakeSession:
         self.ws_calls = []
 
     def post(self, url, **kwargs):
-        """Provide post for the isolated regression scenario."""
+        """Record the login request and return its next configured response."""
         self.post_calls.append((url, kwargs))
         return self._next(self.post_response)
 
     def get(self, url, **kwargs):
-        """Provide get for the isolated regression scenario."""
+        """Record the bootstrap request and return its next configured response."""
         self.get_calls.append((url, kwargs))
         return self._next(self.get_response)
 
     def patch(self, url, **kwargs):
-        """Provide patch for the isolated regression scenario."""
+        """Record the settings request and return its next configured response."""
         self.patch_calls.append((url, kwargs))
         return self._next(self.patch_response)
 
     async def ws_connect(self, url, **kwargs):
-        """Provide ws connect for the isolated regression scenario."""
+        """Record the upgrade request and return or raise its configured outcome."""
         self.ws_calls.append((url, kwargs))
         websocket = self._next(self.websocket)
         if isinstance(websocket, Exception):
@@ -111,49 +115,53 @@ class FakeSession:
 
     @staticmethod
     def _next(response):
-        """Provide next for the isolated regression scenario."""
+        """Consume a queued response, or reuse a single configured response object."""
         return response.pop(0) if isinstance(response, list) else response
 
 
 class FakeMessage:
+    """Represent the payload and aiohttp message type delivered by a fake stream."""
+
     def __init__(self, data, message_type=WSMsgType.BINARY):
-        """Initialize the synthetic test object without external services."""
+        """Store message bytes and type, defaulting to a binary WebSocket message."""
         self.data = data
         self.type = message_type
 
 
 class FakeWebsocket:
+    """Provide a finite async stream and context manager for synthetic WS messages."""
+
     def __init__(self, messages):
-        """Initialize the synthetic test object without external services."""
+        """Retain the mutable message queue consumed by asynchronous iteration."""
         self.messages = messages
 
     async def __aenter__(self):
-        """Implement the test double's aenter protocol."""
+        """Return this synthetic WebSocket when entering its async context."""
         return self
 
     async def __aexit__(self, *args):
-        """Implement the test double's aexit protocol."""
+        """Leave the synthetic WebSocket context without suppressing exceptions."""
         return None
 
     def __aiter__(self):
-        """Implement the test double's aiter protocol."""
+        """Use this object as the asynchronous message iterator."""
         return self
 
     async def __anext__(self):
-        """Implement the test double's anext protocol."""
+        """Consume the next message, or signal a clean end when the queue is empty."""
         if not self.messages:
             raise StopAsyncIteration
         return self.messages.pop(0)
 
 
 def _frame(data: dict) -> bytes:
-    """Provide frame for the isolated regression scenario."""
+    """Encode one uncompressed JSON frame with the Protect binary header."""
     payload = json.dumps(data).encode()
     return HEADER.pack(1, 1, 0, 0, len(payload)) + payload
 
 
 def _client(session) -> PrivateProtectClient:
-    """Provide client for the isolated regression scenario."""
+    """Build a client using only the injected fake session and synthetic credentials."""
     return PrivateProtectClient(
         session,
         host="protect.local",
@@ -333,7 +341,7 @@ async def test_sensor_status_updates_emit_deduplicated_alarm_transitions(
     client.subscribe_alarm_events(callback)
 
     def status_frame(status, value=1200):
-        """Provide status frame for the isolated regression scenario."""
+        """Encode a complete sensor update carrying one CO2 status and value."""
         return _frame(
             {
                 "action": "update",
@@ -681,7 +689,7 @@ async def test_websocket_loop_recovers_from_connection_error() -> None:
     client._websocket_once = AsyncMock(side_effect=ClientConnectionError())
 
     async def stop_after_backoff(_delay):
-        """Provide stop after backoff for the isolated regression scenario."""
+        """End the reconnect loop at its first backoff without actually sleeping."""
         client._closing = True
 
     with patch(
@@ -698,7 +706,7 @@ async def test_websocket_loop_resets_backoff_after_clean_disconnect() -> None:
     client._websocket_once = AsyncMock()
 
     async def stop_after_backoff(delay):
-        """Provide stop after backoff for the isolated regression scenario."""
+        """Check the reset one-second delay, then stop the loop without sleeping."""
         assert delay == 1
         client._closing = True
 
@@ -718,7 +726,7 @@ async def test_websocket_loop_stops_after_auth_rejection() -> None:
     client._async_authenticate = AsyncMock(side_effect=ProtectCannotConnect())
 
     async def stop_after_backoff(_delay):
-        """Provide stop after backoff for the isolated regression scenario."""
+        """Stop the loop defensively if its forbidden post-auth backoff is reached."""
         client._closing = True
 
     with patch(
@@ -963,8 +971,10 @@ async def test_concurrent_expired_requests_share_one_session_renewal(load_fixtur
     rejected_count = 0
 
     class ConcurrentRejection(FakeResponse):
+        """Hold both rejected responses until their contexts have been entered."""
+
         async def __aenter__(self):
-            """Implement the test double's aenter protocol."""
+            """Release both 401 responses together to exercise shared renewal."""
             nonlocal rejected_count
             rejected_count += 1
             if rejected_count == 2:
@@ -1010,7 +1020,7 @@ async def test_websocket_loop_survives_failed_login_and_retries(error):
     client._websocket_once = AsyncMock(side_effect=[error, None])
 
     async def backoff(delay):
-        """Provide backoff for the isolated regression scenario."""
+        """Stop after the second stream attempt while omitting the real retry delay."""
         if client._websocket_once.await_count == 2:
             client._closing = True
 

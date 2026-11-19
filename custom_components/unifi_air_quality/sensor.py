@@ -1,4 +1,4 @@
-"""Sensor entities for UniFi Protect Air Quality."""
+"""Measurement entities with independent freshness and Protect classifications."""
 
 from __future__ import annotations
 
@@ -153,8 +153,7 @@ class UnifiAirQualitySensor(UnifiAirQualityEntity, SensorEntity):
         device_id: str,
         description: UnifiAirQualitySensorEntityDescription,
     ) -> None:
-        """Initialize this component with its entry-scoped dependencies."""
-        # Keep all mutable state scoped to this instance and its config entry.
+        """Bind a measurement description to this device's stable sensor ID."""
         super().__init__(coordinator, device_id, description.key)
         self.entity_description = description
 
@@ -167,7 +166,7 @@ class UnifiAirQualitySensor(UnifiAirQualityEntity, SensorEntity):
 
     @property
     def native_value(self) -> int | float | None:
-        """Return a valid native measurement/setting value or unknown."""
+        """Return the cached numeric reading, excluding booleans and absent values."""
         # Check wire types before converting to the Home Assistant representation.
         measurement = self._measurement
         value = measurement.get("value") if measurement else None
@@ -177,8 +176,7 @@ class UnifiAirQualitySensor(UnifiAirQualityEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, str] | None:
-        """Expose the current Protect classification and optional alarm value."""
-        # Return only attributes relevant to the latest confirmed measurement.
+        """Expose the measurement's Protect status string when supplied."""
         measurement = self._measurement
         status = measurement.get("status") if measurement else None
         return {"protect_status": status} if isinstance(status, str) else None

@@ -1,8 +1,11 @@
 # Security policy
 
-Please report security issues privately through GitHub's security advisory
-feature. Do not open a public issue containing credentials or unredacted
-diagnostics.
+Please report security issues privately through the repository's
+[Security page](https://github.com/Daniel-Dietz/ha-unifi-air-quality/security).
+Use **Report a vulnerability** when available. If private reporting is not
+available, open an issue asking only for a private security contact; include no
+vulnerability details. See [GitHub's private reporting guide](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately). Do not open a public issue containing credentials or
+unredacted diagnostics.
 
 Security fixes target the latest accepted **pinned commit** of fork version
 0.6.0; unmerged candidates and moving-branch downloads are not reproducible
@@ -16,12 +19,13 @@ be used to expose a console publicly.
 
 PRs and pushes run Ruff's security (`S`) rules, secret scanning, and a
 `pip-audit` check of the actually resolved **Home Assistant 2026.10.4**/test
-environment. This is the sole advertised/tested baseline and the HACS minimum;
+environment. This is the pinned CI baseline and the declared HACS minimum;
 older 2026.8.x support was withdrawn because its aiohttp, cryptography, PyJWT and
 uv advisories exceeded the scoped current-baseline policy. Upgrade HA rather
 than adding broad exceptions. Each successful audit logs the HA version, number
 of audited packages and SHA-256 of the sorted package/version inventory.
-The weekly Security run checks for newly published advisories. Synthetic S307 and
+The weekly Security run checks for newly published advisories against that
+baseline, not each user's installed HA version. Synthetic S307 and
 AWS-key samples verify both scanners can fail. Logs contain advisory IDs and
 package versions; secret values and full audit reports are not published.
 
@@ -31,9 +35,9 @@ images are invoked directly with registry-verified immutable SHA-256 digests.
 Review the official `hacs/action:main` and `home-assistant/hassfest:latest` image
 digests weekly alongside Dependabot PRs, update their workflow pins and run the
 complete validators before merging. Image updates are maintainer-owned; the
-weekly workflow does not grant write access to create update PRs. Dependabot checks action and Python pins
-weekly at 09:00 Europe/Berlin. Review upstream changes and all CI results before
-merging its PRs. No workflow needs write permissions; checkout does not persist
+weekly workflow does not grant write access to create update PRs. Dependabot
+checks action and Python pins weekly at 09:00 Europe/Berlin. Review upstream
+changes and all CI results before merging its PRs. No workflow needs write permissions; checkout does not persist
 credentials in the Security job.
 
 `security-advisories.json` tracks individual accepted upstream advisories by exact
@@ -43,9 +47,10 @@ never invokes Pillow or decodes images; HA serves the bundled static PNG files.
 Overriding HA's dependency pin would invalidate the supported runtime. The owner
 must move the test baseline to a compatible patched HA release. This acceptance
 does not assert that the rest of a user's HA installation is unaffected. A new
-advisory, different version or expired exception fails the gate. No entire advisory
-category or package is ignored. Review these exceptions weekly; do not extend
-expiry without a fresh assessment.
+advisory, different affected version or finding with an expired acceptance fails
+the gate. An unused exception is not by itself a scanner finding. No entire
+advisory category or package is ignored. Review these exceptions weekly; do not
+extend expiry without a fresh assessment.
 
 The secret baseline contains reviewed translation labels, workflow option names
 and synthetic test credentials only, with hashed findings marked non-secret.
@@ -68,8 +73,10 @@ an exact commit ID already reachable from the trusted base are recognized as
 public Git references; other detectors still apply, and new PR commit IDs or
 unknown hex values receive no such exemption. Release, manual and weekly
 runs scan the accepted head's full reachable history, using its reviewed
-baseline. Binary and non-UTF-8 assets are outside the text scanner; excessive text blobs or
-scanner/Git failures fail the check instead of silently passing. The history
+baseline. For a new-branch push without a prior commit, the trusted baseline is
+the fetched `origin/main`, not the newly pushed branch's baseline. Binary and
+non-UTF-8 assets are outside the text scanner; excessive text blobs or scanner/Git
+failures fail the check instead of silently passing. The history
 self-test creates two synthetic commits with an invalid AWS-shaped key, deletes
 it before the final tree, and requires detection. Logs reveal only the commit,
 detector and line number; secret values, file names and raw detector output are

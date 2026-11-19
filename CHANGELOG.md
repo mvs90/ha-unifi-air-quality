@@ -2,8 +2,12 @@
 
 ## 0.6.0 — fork hardening (pinned-commit distribution)
 
+- Show a question mark in a circle for available alarm entities whose current
+  state is unknown; retain the separate unavailable-state presentation.
+- Show a red exclamation mark in a circle for fresh, confirmed active alarms in
+  Home Assistant's device view; remove the picture on uncertainty or lost availability.
 - Show a green check for fresh, confirmed OK alarm states in Home Assistant's
-  device view; remove the picture on alarms, uncertainty or lost availability.
+  device view; replace it on alarms and remove it on uncertainty or lost availability.
 - Reconcile recovered alarm state; isolate forbidden writes from read sessions.
 - Verify TLS by default for new entries and recover unexpected stream failures.
 - Enforce freshness, schema validation and bounded WebSocket decoding.

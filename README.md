@@ -77,7 +77,7 @@ First, make sure you can copy folders into Home Assistant:
   using your host's file manager. Home Assistant apps are not available with
   Container.
 
-1. **[Download the installation ZIP](https://github.com/Daniel-Dietz/ha-unifi-air-quality/archive/648aeaada3468b981d183a1ef206e411b00de50b.zip)** and extract it.
+1. **[Download the installation ZIP](https://github.com/Daniel-Dietz/ha-unifi-air-quality/archive/cd24231406d6d65798f48400029ab4dc01c30b9e.zip)** and extract it.
    Keep the ZIP with its original filename alongside your backup.
 2. Open your **Home Assistant configuration directory**, the folder containing
    `configuration.yaml`. On Home Assistant OS this is normally `/config`.
@@ -237,9 +237,14 @@ check the setting in Protect before trying again.
 A measurement's **Alarm** entity reports its current alarm state. Its **Alerts**
 switch and threshold controls configure the alarm.
 
-A confirmed **OK** state shows a **green check mark** in Home Assistant's device
-view. Active alarms and unknown or unavailable states use Home Assistant's
-normal status icons. The green check returns when current data confirms OK.
+In Home Assistant's device view, the alarm symbols show the current state:
+
+- **OK:** a green check mark in a circle.
+- **Alarm active:** a red exclamation mark in a circle.
+- **Unknown:** a question mark in a circle.
+- **Unavailable:** Home Assistant's normal unavailable-state presentation.
+
+The green check returns when current data confirms OK.
 
 - Set at least one lower or upper threshold to enable a measurement alarm.
 - Turning a measurement alarm off clears its thresholds. Enter a threshold again

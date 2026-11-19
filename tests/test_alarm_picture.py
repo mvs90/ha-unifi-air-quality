@@ -9,6 +9,7 @@ from xml.etree.ElementTree import fromstring
 import pytest
 from homeassistant.const import (
     ATTR_ENTITY_PICTURE,
+    ATTR_ICON,
     STATE_OFF,
     STATE_ON,
     STATE_UNAVAILABLE,
@@ -93,6 +94,7 @@ async def test_normal_alarm_pictures_preserve_boolean_states_and_identity(
         }
         for state in initial_states.values():
             assert state.state == STATE_OFF
+            assert ATTR_ICON not in state.attributes
             assert state.attributes["device_class"] == "problem"
             assert state.attributes[ATTR_ENTITY_PICTURE].startswith(
                 "data:image/svg+xml;base64,"
@@ -121,12 +123,14 @@ async def test_normal_alarm_pictures_preserve_boolean_states_and_identity(
         await hass.async_block_till_done()
         alarm = _alarm_state(hass)
         assert alarm.state == STATE_ON
+        assert ATTR_ICON not in alarm.attributes
         assert ATTR_ENTITY_PICTURE not in alarm.attributes
 
         push(client, {"airQuality": {"co2": {"status": "normal", "value": 600}}})
         await hass.async_block_till_done()
         recovered = _alarm_state(hass)
         assert recovered.state == STATE_OFF
+        assert ATTR_ICON not in recovered.attributes
         assert recovered.attributes[ATTR_ENTITY_PICTURE] == picture
         assert alarm.entity_id == recovered.entity_id == registered.entity_id
         assert registry.async_get(recovered.entity_id).unique_id == registered.unique_id
@@ -170,6 +174,7 @@ async def test_alarm_picture_is_removed_during_unavailability_and_restored(
             await hass.async_block_till_done()
             unavailable = _alarm_state(hass)
             assert unavailable.state == STATE_UNAVAILABLE
+            assert ATTR_ICON not in unavailable.attributes
             assert ATTR_ENTITY_PICTURE not in unavailable.attributes
 
             clock.return_value = 222
@@ -183,6 +188,7 @@ async def test_alarm_picture_is_removed_during_unavailability_and_restored(
             await hass.async_block_till_done()
             recovered = _alarm_state(hass)
             assert recovered.state == STATE_OFF
+            assert ATTR_ICON not in recovered.attributes
             assert recovered.entity_id == unavailable.entity_id
             assert recovered.attributes[ATTR_ENTITY_PICTURE] == picture
 
@@ -197,12 +203,14 @@ async def test_unconfirmed_scalar_bootstrap_never_publishes_a_green_ok(
         assert client.is_device_fresh(_DEVICE_ID)
         assert not client.is_alarm_fresh(_DEVICE_ID, "co2")
         assert unconfirmed.state == STATE_UNAVAILABLE
+        assert ATTR_ICON not in unconfirmed.attributes
         assert ATTR_ENTITY_PICTURE not in unconfirmed.attributes
 
         push(client, {"airQuality": {"co2": {"status": "safe", "value": 612}}})
         await hass.async_block_till_done()
         confirmed = _alarm_state(hass)
         assert confirmed.state == STATE_OFF
+        assert ATTR_ICON not in confirmed.attributes
         assert confirmed.entity_id == unconfirmed.entity_id
         assert ATTR_ENTITY_PICTURE in confirmed.attributes
 
@@ -225,6 +233,7 @@ async def test_uncertain_alarm_resolution_never_publishes_a_green_ok(
             )
         await hass.async_block_till_done()
         assert _alarm_state(hass).state == STATE_ON
+        assert ATTR_ICON not in _alarm_state(hass).attributes
         assert ATTR_ENTITY_PICTURE not in _alarm_state(hass).attributes
 
         session.get_response = FakeResponse(
@@ -234,6 +243,7 @@ async def test_uncertain_alarm_resolution_never_publishes_a_green_ok(
         await hass.async_block_till_done()
         assert client.snapshot.devices[0].uncertain_alarm_metrics == ("co2",)
         assert _alarm_state(hass).state == STATE_UNAVAILABLE
+        assert ATTR_ICON not in _alarm_state(hass).attributes
         assert ATTR_ENTITY_PICTURE not in _alarm_state(hass).attributes
 
         # The first end verifies liveness, but the second alarm remains unresolved.
@@ -243,6 +253,7 @@ async def test_uncertain_alarm_resolution_never_publishes_a_green_ok(
         await hass.async_block_till_done()
         assert client.is_alarm_fresh(_DEVICE_ID, "co2")
         assert _alarm_state(hass).state == STATE_UNKNOWN
+        assert _alarm_state(hass).attributes[ATTR_ICON] == "mdi:help-circle"
         assert ATTR_ENTITY_PICTURE not in _alarm_state(hass).attributes
 
         client._process_websocket_payload(
@@ -250,4 +261,5 @@ async def test_uncertain_alarm_resolution_never_publishes_a_green_ok(
         )
         await hass.async_block_till_done()
         assert _alarm_state(hass).state == STATE_OFF
+        assert ATTR_ICON not in _alarm_state(hass).attributes
         assert _alarm_state(hass).attributes[ATTR_ENTITY_PICTURE] == picture

@@ -125,6 +125,15 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
         return status.casefold() not in _NON_ALARM_STATUSES
 
     @property
+    def icon(self) -> str | None:
+        """Show a question mark only for an available but unknown alarm state."""
+        # The default problem icon is a check even for unknown; do not imply OK.
+        # Leave unavailable and confirmed states to their existing presentation.
+        if self.available and self.is_on is None:
+            return "mdi:help-circle"
+        return None
+
+    @property
     def entity_picture(self) -> str | None:
         """Show a green check only for a fresh, available and confirmed OK state."""
         # Remove a previous OK picture on alarms, uncertainty or lost freshness;

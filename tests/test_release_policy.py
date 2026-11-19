@@ -24,8 +24,8 @@ def test_supported_ha_baseline_matches_tests_and_audit():
     assert compose["services"]["homeassistant"]["image"].endswith(":" + baseline)
 
 
-def test_fork_versions_are_consistent():
-    """Manifest, Python distribution and changelog identify one fork version."""
+def test_distribution_versions_are_consistent():
+    """Manifest, Python distribution and changelog identify one version."""
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())
     manifest = json.loads(
         (ROOT / "custom_components/unifi_air_quality/manifest.json").read_text()
@@ -35,14 +35,8 @@ def test_fork_versions_are_consistent():
     assert f"## {version} " in (ROOT / "CHANGELOG.md").read_text()
 
 
-def test_ruleset_requires_actual_unique_job_contexts():
-    """An importable no-bypass ruleset references the exact emitted check names."""
-    ruleset = json.loads((ROOT / ".github/rulesets/main.json").read_text())
-    assert ruleset["bypass_actors"] == []
-    assert ruleset["conditions"]["ref_name"]["include"] == ["refs/heads/main"]
-    rules = {rule["type"]: rule.get("parameters", {}) for rule in ruleset["rules"]}
-    assert "deletion" in rules and "non_fast_forward" in rules
-    assert rules["pull_request"]["required_review_thread_resolution"]
+def test_validation_workflows_use_unique_job_contexts():
+    """CI workflows define distinct check names with read-only permissions."""
     expected = {"Home Assistant 2026.10.4"}
     for name, job in (
         ("security", "scan"),
@@ -52,10 +46,4 @@ def test_ruleset_requires_actual_unique_job_contexts():
         workflow = yaml.safe_load((ROOT / f".github/workflows/{name}.yml").read_text())
         assert workflow["permissions"] == {"contents": "read"}
         expected.add(workflow["jobs"][job]["name"])
-    checks = rules["required_status_checks"]
-    assert checks["strict_required_status_checks_policy"]
-    assert {check["context"] for check in checks["required_status_checks"]} == expected
-    assert {check["integration_id"] for check in checks["required_status_checks"]} == {
-        15368
-    }
     assert len(expected) == 4

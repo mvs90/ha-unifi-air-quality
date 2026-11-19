@@ -60,6 +60,9 @@ used in that form.
 
 ## Install the integration
 
+For a **supported installation**, use the fixed ZIP in Option 1 and keep its
+original filename. It identifies the exact package for recovery and support.
+
 ### Option 1: Download and copy the integration
 
 Use this option for a fixed installation package. HACS and a GitHub account
@@ -138,11 +141,12 @@ installed.
 See [HACS custom repositories](https://www.hacs.xyz/docs/faq/custom_repositories/)
 if the repository is not listed.
 
-**Choose one installation method for this integration.** Marketplace and HACS
-download the current repository contents; the ZIP above provides a fixed package
-for repeatable installation and recovery. Use the ZIP method when you need to
-reinstall exactly the same package. Avoid having a package manager overwrite a
-manually maintained copy.
+**Choose one installation method for this integration.** The fixed ZIP is covered
+by the [supported installation policy](docs/install-upgrade-rollback.md#supported-distribution-and-identity).
+Marketplace and HACS download moving repository contents; those unpinned
+packages are outside that support policy. These are optional download methods
+for users who choose to manage that limitation. Avoid having a package manager
+overwrite a manually maintained copy.
 
 ## Connect Home Assistant to Protect
 
@@ -312,6 +316,7 @@ longer opens, follow the official
 | **TLS/certificate error** | Check that the host matches the certificate and that Home Assistant trusts its issuer. See [certificate errors](#certificate-errors-during-setup). |
 | **Setup succeeds but no devices appear** | Confirm the UP-AirQuality is adopted in this console and visible to the configured account. Allow a refresh to complete. |
 | **Measurements are unavailable** | Check the sensor is online in Protect and that Protect supplies that reading. Restore connectivity and wait for a refresh. |
+| **An alarm shows OK with a grey check mark** | OK means that alarm is not active. Home Assistant uses grey for the inactive state in its default theme. Missing or unconfirmed alarm data is shown as unknown or unavailable. |
 | **NOx is missing or has no value** | Enable the relevant NOx entities. Some firmware does not provide a numeric NOx reading. |
 | **Measurements work but controls fail** | Give the local account permission to change the sensor's settings in Protect. Read access alone is insufficient for controls. |
 | **An alarm cannot be enabled** | Set a lower or upper threshold first. |

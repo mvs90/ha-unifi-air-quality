@@ -68,15 +68,13 @@ class AirQualityTime(UnifiAirQualityEntity, TimeEntity):
         device_id: str,
         description: AirQualityTimeDescription,
     ) -> None:
-        """Initialize this component with its entry-scoped dependencies."""
-        # Keep all mutable state scoped to this instance and its config entry.
+        """Bind the night-mode start or end setting to its stable entity ID."""
         super().__init__(coordinator, device_id, description.key)
         self.entity_description = description
 
     @property
     def native_value(self) -> time | None:
-        """Return a valid native measurement/setting value or unknown."""
-        # Check wire types before converting to the Home Assistant representation.
+        """Parse the stored ISO time string, returning None for invalid data."""
         value = self.raw_value(self.entity_description.path)
         if not isinstance(value, str):
             return None
@@ -87,7 +85,7 @@ class AirQualityTime(UnifiAirQualityEntity, TimeEntity):
 
     async def async_set_value(self, value: time) -> None:
         """Write a night-mode time using Protect's HH:MM representation."""
-        # Protect accepts minute precision, independently of Python seconds/timezones.
+        # Drop seconds and timezone information; this is a device schedule clock time.
         await self.async_write_value(
             self.entity_description.path, value.strftime("%H:%M")
         )

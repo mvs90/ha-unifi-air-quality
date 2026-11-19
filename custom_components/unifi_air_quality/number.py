@@ -32,7 +32,7 @@ _MISSING = object()
 
 @dataclass(frozen=True, kw_only=True)
 class AirQualityNumberDescription(NumberEntityDescription):
-    """Describe a writable numeric setting."""
+    """Map a numeric entity to its payload path and optional alarm activation."""
 
     path: tuple[str, ...]
     activates_alarm: bool = False
@@ -143,7 +143,11 @@ async def async_setup_entry(
     entry: UnifiAirQualityConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up writable numeric settings."""
+    """Remove two obsolete controls, then discover writable numeric settings.
+
+    Only this entry's exact ``reading_interval`` and ``vape_low_threshold``
+    identities are removed; all currently supported entity IDs are preserved.
+    """
     coordinator = entry.runtime_data.coordinator
     registry = er.async_get(hass)
     # Include previously paired devices retained through an outage, but never
@@ -190,15 +194,17 @@ class AirQualityNumber(UnifiAirQualityEntity, NumberEntity):
         device_id: str,
         description: AirQualityNumberDescription,
     ) -> None:
-        """Initialize this component with its entry-scoped dependencies."""
-        # Keep all mutable state scoped to this instance and its config entry.
+        """Bind the numeric setting's range, unit, and path to one device."""
         super().__init__(coordinator, device_id, description.key)
         self.entity_description = description
 
     @property
     def native_value(self) -> float | None:
-        """Return a valid native measurement/setting value or unknown."""
-        # Check wire types before converting to the Home Assistant representation.
+        """Return a finite setting, displaying explicitly cleared thresholds as zero.
+
+        A missing field remains unknown. Only a present null threshold receives
+        the zero display fallback; this does not enable or write the alarm.
+        """
         value = self.raw_value(self.entity_description.path, default=_MISSING)
         if value is None and self.entity_description.activates_alarm:
             return 0.0
@@ -211,8 +217,11 @@ class AirQualityNumber(UnifiAirQualityEntity, NumberEntity):
         return float(value)
 
     async def async_set_native_value(self, value: float) -> None:
-        """Write a numeric setting with its metric-specific alarm semantics."""
-        # Thresholds activate alarms; vape firmware requires both sensitivity fields.
+        """Confirm a setting write, enabling its alarm when setting a threshold.
+
+        Vape sensitivity writes both the sensitivity and high-threshold fields.
+        Other thresholds include isEnabled=True; brightness writes only its value.
+        """
         normalized: int | float = int(value) if value.is_integer() else value
         if self.entity_description.key == "vape_sensitivity":
             await self.async_write_update(

@@ -17,7 +17,7 @@ from .entity import UnifiAirQualityEntity, async_setup_dynamic_entities
 
 @dataclass(frozen=True, kw_only=True)
 class AirQualitySwitchDescription(SwitchEntityDescription):
-    """Describe a writable boolean setting."""
+    """Map a boolean setting to its payload path and threshold requirements."""
 
     path: tuple[str, ...]
     is_alarm: bool = False
@@ -87,7 +87,7 @@ async def async_setup_entry(
     entry: UnifiAirQualityConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up writable switches."""
+    """Discover boolean settings and the brightness-backed ring LED switch."""
     coordinator = entry.runtime_data.coordinator
     async_setup_dynamic_entities(
         entry,
@@ -113,15 +113,17 @@ class AirQualitySwitch(UnifiAirQualityEntity, SwitchEntity):
         device_id: str,
         description: AirQualitySwitchDescription,
     ) -> None:
-        """Initialize this component with its entry-scoped dependencies."""
-        # Keep all mutable state scoped to this instance and its config entry.
+        """Bind a boolean setting and its alarm semantics to one device."""
         super().__init__(coordinator, device_id, description.key)
         self.entity_description = description
 
     @property
     def is_on(self) -> bool | None:
-        """Return the confirmed boolean/alarm state, or unknown if unavailable."""
-        # Use current confirmed state so rejected settings never appear successful.
+        """Read the confirmed flag; alarm switches also require a set threshold.
+
+        Missing or nonboolean flags yield None. Entity availability is checked
+        separately and does not change this cached setting calculation.
+        """
         value = self.raw_value(self.entity_description.path)
         if not isinstance(value, bool):
             return None
@@ -133,8 +135,7 @@ class AirQualitySwitch(UnifiAirQualityEntity, SwitchEntity):
         return value and (low is not None or high is not None)
 
     async def async_turn_on(self, **kwargs: object) -> None:
-        """Enable this setting using the last confirmed device configuration."""
-        # Only submit a Protect write after validating the control's prerequisites.
+        """Enable the setting, refusing an alarm with neither threshold set."""
         if self.entity_description.is_alarm:
             settings_path = self.entity_description.path[:-1]
             low = self.raw_value((*settings_path, "lowThreshold"))
@@ -146,8 +147,10 @@ class AirQualitySwitch(UnifiAirQualityEntity, SwitchEntity):
         await self.async_write_value(self.entity_description.path, True)
 
     async def async_turn_off(self, **kwargs: object) -> None:
-        """Disable this setting while retaining the required device semantics."""
-        # Preserve firmware-specific thresholds or remembered brightness where required.
+        """Disable the setting and clear both thresholds for non-vape alarms.
+
+        Vape keeps its high threshold; ordinary boolean settings only write False.
+        """
         if self.entity_description.is_alarm:
             settings_path = self.entity_description.path[:-1]
             if settings_path[-1] == "vapeSettings":
@@ -176,8 +179,7 @@ class RingLedSwitch(UnifiAirQualityEntity, SwitchEntity):
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: UnifiAirQualityCoordinator, device_id: str) -> None:
-        """Initialize this component with its entry-scoped dependencies."""
-        # Keep all mutable state scoped to this instance and its config entry.
+        """Remember current or saved ring brightness, defaulting to 100 percent."""
         super().__init__(coordinator, device_id, "ring_led")
         self._brightness_option_key = f"ring_led_previous_brightness_{device_id}"
         brightness = self.raw_value(("airQualitySettings", "ringLedBrightness"))
@@ -195,8 +197,7 @@ class RingLedSwitch(UnifiAirQualityEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool | None:
-        """Return the confirmed boolean/alarm state, or unknown if unavailable."""
-        # Use current confirmed state so rejected settings never appear successful.
+        """Return whether brightness is positive and remember its latest value."""
         brightness = self.raw_value(("airQualitySettings", "ringLedBrightness"))
         if isinstance(brightness, bool) or not isinstance(brightness, (int, float)):
             return None
@@ -206,15 +207,16 @@ class RingLedSwitch(UnifiAirQualityEntity, SwitchEntity):
         return False
 
     async def async_turn_on(self, **kwargs: object) -> None:
-        """Enable this setting using the last confirmed device configuration."""
-        # Only submit a Protect write after validating the control's prerequisites.
+        """Restore the remembered positive ring brightness through a verified write."""
         await self.async_write_value(
             ("airQualitySettings", "ringLedBrightness"), self._last_brightness
         )
 
     async def async_turn_off(self, **kwargs: object) -> None:
-        """Disable this setting while retaining the required device semantics."""
-        # Preserve firmware-specific thresholds or remembered brightness where required.
+        """Persist positive brightness in entry options before writing zero.
+
+        The saved value survives reloads so turning the ring on can restore it.
+        """
         brightness = self.raw_value(("airQualitySettings", "ringLedBrightness"))
         if isinstance(brightness, (int, float)) and not isinstance(brightness, bool):
             if brightness > 0:

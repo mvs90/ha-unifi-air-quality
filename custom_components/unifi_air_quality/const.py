@@ -9,12 +9,15 @@ DEFAULT_PORT = 443
 DEFAULT_VERIFY_SSL = True
 
 BOOTSTRAP_REFRESH_INTERVAL = timedelta(seconds=60)
+# Each device, numeric reading, and alarm has its own verification timestamp.
+# Ages equal to this limit are already stale; socket connectivity is insufficient.
 DATA_FRESHNESS_SECONDS = 120
 
 MANUFACTURER = "Ubiquiti"
 MODEL = "UP-AirQuality"
 
-# Older scalar firmware uses these metric names on the wire.
+# Canonical payload key -> legacy wire key. Entity unique IDs use separate keys
+# from their platform descriptions, so normalizing a wire alias cannot rename one.
 MEASUREMENT_ALIASES = {
     "pm1p0": "pm1",
     "pm2p5": "pm2_5",

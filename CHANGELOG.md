@@ -2,6 +2,8 @@
 
 ## 0.6.0 — fork hardening (pinned-commit distribution)
 
+- Organize installation methods as Marketplace, HACS and manual download; expand
+  configuration, alarm-display, recovery and code-level documentation.
 - Show a question mark in a circle for available alarm entities whose current
   state is unknown; retain the separate unavailable-state presentation.
 - Show a red exclamation mark in a circle for fresh, confirmed active alarms in
@@ -24,7 +26,6 @@
 - Allow safe cleanup of permanently unpaired devices and scope obsolete controls per entry.
 - Report relative per-metric freshness and authentication health in private diagnostics.
 - Translate TLS/reconfiguration guidance in every catalog and identify upstream sponsorship.
-
 
 ## 0.5.4
 

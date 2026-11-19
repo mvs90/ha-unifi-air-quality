@@ -1,7 +1,14 @@
 """Scan introduced Git blobs, including secrets deleted before the final tree.
 
+Run from the repository root with a complete Git history and detect-secrets
+installed. HISTORY_HEAD defaults to HEAD; HISTORY_BASE selects the excluded base
+of a base..head range. Without a nonzero base, the complete head ancestry is
+scanned. A new-branch push trusts origin/main rather than its own exclusions.
+``--self-test`` checks synthetic violations in disposable repositories.
+
 Only a commit, detector name and line number leave this process. Blob contents,
 file names, hashes of detected values and detector exception text stay private.
+Exit codes are 0 for a clean scan, 1 for findings and 2 for scanner failure.
 """
 
 from __future__ import annotations
@@ -57,7 +64,13 @@ def reviewed_findings(baseline: dict) -> set[tuple[str, str, str]]:
 
 
 def scan_content(content: bytes, filename: str, sample: Path, *, inline: bool = False):
-    """Scan text while ignoring only valid baseline hash metadata, not raw values."""
+    """Return detector findings for a UTF-8 text blob using a temporary sample.
+
+    NUL-containing blobs are skipped. Other blobs exceeding MAX_TEXT_BYTES raise
+    an error before decoding; UTF-8 decode failures are skipped. Baseline hash
+    metadata is masked, but plaintext remains scannable.
+    Inline allowlist pragmas are ignored unless ``inline`` is explicitly enabled.
+    """
     if b"\0" in content:
         return []
     if len(content) > MAX_TEXT_BYTES:
@@ -114,7 +127,14 @@ def scan_history(
     baseline: dict,
     trusted_commit: str | None = None,
 ) -> tuple[list[tuple[str, str, int]], int]:
-    """Inspect every changed text blob without trusting newly added exclusions."""
+    """Return redacted findings and the number of commits inspected.
+
+    Inspect each changed path/blob pair once, including intermediate commits and
+    merge-parent diffs. The caller supplies reviewed ``baseline`` exclusions and
+    a ``trusted_commit`` for inline exclusions and public commit references. The
+    CLI selects the trusted base for PRs/pushes and the accepted head for release
+    or manual scans. Invalid revisions and scanner errors propagate to the CLI.
+    """
     head = checked_commit(repository, head)
     revision = head
     if base and base != "0" * 40:

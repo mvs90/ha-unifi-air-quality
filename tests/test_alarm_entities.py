@@ -32,7 +32,7 @@ def _device(
     status: object = "neutral",
     active_alarms: tuple[ProtectAlarm, ...] = (),
 ) -> AirQualityDevice:
-    """Provide device for the isolated regression scenario."""
+    """Build a synthetic device with a CO2 status and optional active alarm sources."""
     return AirQualityDevice(
         "device-id",
         "Office air",
@@ -45,7 +45,7 @@ def _device(
 
 
 def _coordinator(device: AirQualityDevice):
-    """Provide coordinator for the isolated regression scenario."""
+    """Wrap one device in a successful mock coordinator with event subscription."""
     coordinator = MagicMock()
     coordinator.data = ProtectSnapshot("console", "Protect", "6.2", "1", (device,))
     coordinator.last_update_success = True
@@ -54,7 +54,7 @@ def _coordinator(device: AirQualityDevice):
 
 
 def _description(key: str):
-    """Provide description for the isolated regression scenario."""
+    """Find an alarm entity description by its stable key."""
     return next(item for item in ALARM_DESCRIPTIONS if item.key == key)
 
 
@@ -127,7 +127,7 @@ def test_binary_alarm_prefers_active_event_and_exposes_value() -> None:
 
 
 def test_binary_alarm_missing_device_or_reading() -> None:
-    """Verify binary alarm missing device or reading."""
+    """Omit absent alarm attributes and return no boolean when the device is missing."""
     coordinator = _coordinator(_device())
     entity = UnifiAirQualityAlarmBinarySensor(
         coordinator, "device-id", _description("pm10_alarm")

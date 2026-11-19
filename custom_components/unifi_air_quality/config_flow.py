@@ -1,4 +1,4 @@
-"""Config flow for UniFi Protect Air Quality."""
+"""Configure a console, revalidate endpoint changes, and replace expired passwords."""
 
 from __future__ import annotations
 
@@ -31,7 +31,11 @@ from .const import CONF_VERIFY_SSL, DEFAULT_PORT, DEFAULT_VERIFY_SSL, DOMAIN
 
 
 def _validated_port(value: Any) -> int:
-    """Accept an integer-valued selector port without truncation or coercing bools."""
+    """Return an integer port in 1..65535 or raise ProtectCannotConnect.
+
+    Home Assistant's number selector may supply an integer-valued float.
+    Fractional values, booleans, strings, and non-finite values are rejected.
+    """
     if (
         isinstance(value, bool)
         or not isinstance(value, (int, float))
@@ -92,7 +96,7 @@ class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def _validate(self, data: dict[str, Any]) -> tuple[str, str]:
-        """Validate a setup attempt with an isolated session and cleanup."""
+        """Return console ID/name using an isolated, always-released HTTP session."""
         # Detach the attempt's session even if construction or cancellation fails.
         session = async_create_clientsession(
             self.hass,
@@ -107,7 +111,11 @@ class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def _validate_session(
         self, data: dict[str, Any], session: ClientSession
     ) -> tuple[str, str]:
-        """Validate credentials by fetching a complete Protect bootstrap."""
+        """Fetch a valid inventory and return its console ID/name, closing the client.
+
+        Read access and schema compatibility are checked even for an empty
+        sensor inventory. Adapter exceptions retain their flow-specific meaning.
+        """
         # The client owns this attempt's cookies and is closed on every exit path.
         client = PrivateProtectClient(
             session,
@@ -126,7 +134,7 @@ class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the initial user step."""
+        """Show connection settings or create a uniquely identified console entry."""
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
@@ -157,7 +165,11 @@ class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Reconfigure an existing entry only if it remains the same console."""
+        """Validate host, port, and TLS changes against the saved console identity.
+
+        Keep credentials, entry identity, options, and registry mappings. Failed
+        validation leaves the saved entry untouched and shows the error in place.
+        """
         entry = self._get_reconfigure_entry()
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -195,7 +207,7 @@ class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
-        """Start reauthentication."""
+        """Find the rejected entry and open its password replacement form."""
         self._reauth_entry = self.hass.config_entries.async_get_entry(
             self.context["entry_id"]
         )
@@ -204,7 +216,11 @@ class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Validate replacement credentials."""
+        """Validate a new password for the same console, then update and reload.
+
+        Host, port, username, and the explicit TLS choice stay in the saved entry.
+        Connection or protocol failures keep the password form open.
+        """
         entry = self._reauth_entry
         if user_input is not None:
             data = {**entry.data, **user_input}

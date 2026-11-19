@@ -21,7 +21,7 @@ from .test_client import FakeResponse, FakeSession, _client, _frame
 def push(
     client, data, *, model="sensor", operation="update", id="anonymous-air-quality-id"
 ):
-    """Provide push for the isolated regression scenario."""
+    """Deliver a synthetic Protect action/data frame pair directly to the client."""
     client._process_websocket_payload(
         _frame({"action": operation, "modelKey": model, "id": id}) + _frame(data)
     )
@@ -269,7 +269,7 @@ async def test_unexpected_stream_failure_recovers_with_bounded_backoff(caplog):
     calls = 0
 
     async def once():
-        """Provide once for the isolated regression scenario."""
+        """Fail eight stream attempts, then stop the loop after the recovery attempt."""
         nonlocal calls
         calls += 1
         if calls <= 8:
@@ -277,7 +277,7 @@ async def test_unexpected_stream_failure_recovers_with_bounded_backoff(caplog):
         client._closing = True
 
     async def sleep(delay):
-        """Provide sleep for the isolated regression scenario."""
+        """Record reconnect delays without blocking the test clock."""
         delays.append(delay)
 
     client._websocket_once = once

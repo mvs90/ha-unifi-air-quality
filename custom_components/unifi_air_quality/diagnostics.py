@@ -35,7 +35,7 @@ _SETTINGS_GROUPS = {f"{metric}Settings" for metric in _MEASUREMENT_KEYS} | {
 
 
 def safe_version(value: Any) -> str | None:
-    """Export version syntax only, never arbitrary server-supplied text."""
+    """Return two to four numeric version components, otherwise None."""
     if isinstance(value, str) and re.fullmatch(r"\d+(?:\.\d+){1,3}", value):
         return value
     return None
@@ -52,6 +52,8 @@ def sanitize_raw(
 
     Random per-export aliases preserve within-export correlation only. No hash
     or stable fingerprint of a MAC, serial, host or device identifier is exported.
+    Pass one shared aliases mapping and prefix across devices in an export.
+    Unknown keys are omitted; disallowed values of allowed keys are redacted.
     """
     aliases = {} if aliases is None else aliases
     prefix = prefix or uuid4().hex
@@ -117,7 +119,11 @@ def sanitize_raw(
 def _health_category(
     client: Any, devices: list[dict[str, Any]], refresh_age: float | None
 ) -> str:
-    """Summarize safe health without serializing exceptions or server messages."""
+    """Classify auth, protocol, inventory, connectivity, and measurement health.
+
+    This summary does not aggregate per-alarm freshness; inspect the separate
+    alarm flags for those states. No exceptions or server messages are exported.
+    """
     if client.authentication_failed:
         return "authentication_failed"
     if client.protocol_error:
@@ -146,7 +152,11 @@ def _health_category(
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: UnifiAirQualityConfigEntry
 ) -> dict[str, Any]:
-    """Export current troubleshooting state, excluding history and credentials."""
+    """Export allowlisted settings, relative freshness ages, and transport health.
+
+    Device aliases are new for every export. Credentials, host names, stream
+    cursors, event history, and arbitrary server text are not included.
+    """
     runtime = entry.runtime_data
     snapshot = runtime.coordinator.data
     aliases: dict[str, str] = {}

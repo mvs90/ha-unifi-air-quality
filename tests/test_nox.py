@@ -26,7 +26,7 @@ from .ha_test_helpers import MockConfigEntry
 
 
 def _coordinator(load_fixture):
-    """Provide coordinator for the isolated regression scenario."""
+    """Load the NOx fixture into a successful mock coordinator with settings writes."""
     coordinator = MagicMock()
     coordinator.data = snapshot_from_bootstrap(
         json.loads(load_fixture("bootstrap_nox.json"))

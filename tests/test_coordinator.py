@@ -17,12 +17,12 @@ from .ha_test_helpers import MockConfigEntry
 
 
 def _snapshot() -> ProtectSnapshot:
-    """Provide snapshot for the isolated regression scenario."""
+    """Return an empty synthetic console inventory for poll/push comparisons."""
     return ProtectSnapshot("console", "Protect", "6.2", "update", ())
 
 
 async def test_coordinator_update_and_push(hass) -> None:
-    """Verify coordinator update and push."""
+    """Accept snapshots from REST refreshes and the registered push callback."""
     client = MagicMock(protocol_error=False, authentication_failed=False)
     client.async_get_snapshot = AsyncMock(return_value=_snapshot())
     coordinator = UnifiAirQualityCoordinator(hass, MockConfigEntry(), client)
@@ -34,7 +34,7 @@ async def test_coordinator_update_and_push(hass) -> None:
 
 
 async def test_coordinator_maps_errors(hass) -> None:
-    """Verify coordinator maps errors."""
+    """Map terminal auth and uncached network failures to Home Assistant errors."""
     client = MagicMock(protocol_error=False, authentication_failed=False)
     coordinator = UnifiAirQualityCoordinator(hass, MockConfigEntry(), client)
     client.async_get_snapshot = AsyncMock(side_effect=ProtectInvalidAuth())

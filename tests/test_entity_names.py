@@ -23,7 +23,7 @@ LANGUAGES = sorted(
 
 
 def test_english_catalog_covers_the_translation_source():
-    """Verify english catalog covers the translation source."""
+    """Keep the English catalog identical to the canonical strings.json source."""
     assert json.loads((INTEGRATION_PATH / "translations/en.json").read_text()) == (
         json.loads((INTEGRATION_PATH / "strings.json").read_text())
     )
@@ -31,10 +31,10 @@ def test_english_catalog_covers_the_translation_source():
 
 @pytest.mark.parametrize("language", LANGUAGES)
 def test_translation_catalog_is_complete(language):
-    """Verify translation catalog is complete."""
+    """Require every source key, nonempty text and unchanged format placeholders."""
 
     def flatten(value, prefix=""):
-        """Provide flatten for the isolated regression scenario."""
+        """Flatten catalog keys and reject empty or non-string text."""
         if isinstance(value, dict):
             result = {}
             for key, child in value.items():
@@ -56,7 +56,7 @@ def test_translation_catalog_is_complete(language):
 
 
 def _entry(hass):
-    """Provide entry for the isolated regression scenario."""
+    """Register a config entry with a synthetic local endpoint and credentials."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -72,7 +72,7 @@ def _entry(hass):
 
 
 def _mock_client(factory, load_fixture):
-    """Provide mock client for the isolated regression scenario."""
+    """Provide the complete NOx fixture and mock client lifecycle/event hooks."""
     client = factory.return_value
     client.async_get_snapshot = AsyncMock(
         return_value=snapshot_from_bootstrap(

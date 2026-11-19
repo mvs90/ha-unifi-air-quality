@@ -1,9 +1,14 @@
 # Main-branch review and validation policy
 
-`.github/rulesets/main.json` is a ready-to-import GitHub branch ruleset for this
-repository. Committing the file does **not** activate repository settings. An
-administrator must import/apply it and verify the resulting effective rules.
-Until that verification is recorded, branch protection remains unconfirmed.
+[`.github/rulesets/main.json`](../.github/rulesets/main.json) is the importable
+template for this repository's GitHub branch ruleset. Committing the file does
+**not** change live repository settings. After importing or editing a ruleset,
+an administrator must verify the saved settings and effective rules.
+
+The fork's [live ruleset](https://github.com/Daniel-Dietz/ha-unifi-air-quality/rules/27596081)
+was read back on 2026-11-19 as active for `main`, with the four check contexts
+below, required conversation resolution, an up-to-date branch and no bypass
+actors. This dated record does not replace verification after later changes.
 
 The ruleset targets `refs/heads/main`, blocks deletion and force pushes, requires
 pull requests with resolved review conversations, requires an up-to-date branch,
@@ -18,8 +23,8 @@ and has no bypass actors. These are the exact final GitHub Actions job contexts:
 
 The names are deliberately distinct. A workflow name alone is not a check
 context. The JSON binds each check to the verified GitHub Actions app
-(`integration_id: 15368`). Confirm that source when importing. Do not remove a required check
-to make a pending merge pass; repair or rerun its workflow instead.
+(`integration_id: 15368`). Confirm that source when importing. Do not remove a
+required check to make a pending merge pass; repair or rerun its workflow instead.
 
 ## Apply and verify
 

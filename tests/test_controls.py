@@ -43,7 +43,7 @@ from custom_components.unifi_air_quality.time import (
 
 
 def _device(*, connected: bool = True) -> AirQualityDevice:
-    """Provide device for the isolated regression scenario."""
+    """Build a synthetic device with LED, night-mode, threshold and vape settings."""
     return AirQualityDevice(
         "device-id",
         "Office air",
@@ -80,7 +80,7 @@ def _device(*, connected: bool = True) -> AirQualityDevice:
 
 
 def _coordinator(device: AirQualityDevice):
-    """Provide coordinator for the isolated regression scenario."""
+    """Wrap one device with mocked settings writes and persistent entry options."""
     coordinator = MagicMock()
     coordinator.data = ProtectSnapshot("console", "Protect", "6.2", "1", (device,))
     coordinator.last_update_success = True
@@ -90,7 +90,7 @@ def _coordinator(device: AirQualityDevice):
 
 
 def _description(descriptions, key):
-    """Provide description for the isolated regression scenario."""
+    """Find a configuration entity description by its stable key."""
     return next(item for item in descriptions if item.key == key)
 
 

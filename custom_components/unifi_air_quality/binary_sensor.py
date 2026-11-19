@@ -23,6 +23,7 @@ _NON_ALARM_STATUSES = frozenset({"good", "neutral", "normal", "safe"})
 
 # The device view does not enable state colors for binary-sensor icons. Native
 # entity pictures keep confirmed states colored in that view too.
+# Cards ignoring entity_picture retain their usual MDI icons and state colors.
 # The transparent 40px canvas preserves the size of a normal icon in a HA badge.
 _NORMAL_ALARM_PICTURE = "data:image/svg+xml;base64," + b64encode(
     b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">'
@@ -101,8 +102,7 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
         device_id: str,
         description: AlarmBinarySensorDescription,
     ) -> None:
-        """Initialize this component with its entry-scoped dependencies."""
-        # Keep all mutable state scoped to this instance and its config entry.
+        """Bind a metric description to this device's stable alarm entity ID."""
         super().__init__(coordinator, device_id, description.key)
         self.entity_description = description
 
@@ -115,8 +115,12 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
 
     @property
     def is_on(self) -> bool | None:
-        """Return the confirmed boolean/alarm state, or unknown if unavailable."""
-        # Use current confirmed state so rejected settings never appear successful.
+        """Return an active alarm, an uncertain state, or the cached classification.
+
+        Active aggregate sources take precedence over uncertainty. Missing
+        status falls back to False here; the separate availability check prevents
+        an unverified or stale alarm from being displayed as a confirmed OK.
+        """
         device = self.device
         if device is None:
             return None
@@ -156,8 +160,7 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Expose the current Protect classification and optional alarm value."""
-        # Return only attributes relevant to the latest confirmed measurement.
+        """Expose aggregate alarm details, falling back to the measurement status."""
         device = self.device
         if device is not None:
             for alarm in device.active_alarms:

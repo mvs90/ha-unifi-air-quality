@@ -82,12 +82,12 @@ def test_deep_merge_preserves_other_readings() -> None:
     [("protect.local", "protect.local"), ("2001:db8::1", "[2001:db8::1]")],
 )
 def test_host_for_url(host: str, expected: str) -> None:
-    """Verify host for url."""
+    """Leave DNS hosts unchanged and bracket an unbracketed IPv6 literal."""
     assert _host_for_url(host) == expected
 
 
 @pytest.mark.parametrize("host", ["https://protect.local", "", "protect/local"])
 def test_host_for_url_rejects_url(host) -> None:
-    """Verify host for url rejects url."""
+    """Reject empty hosts and inputs containing a scheme or path."""
     with pytest.raises(ProtectProtocolError):
         _host_for_url(host)

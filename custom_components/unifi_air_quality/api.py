@@ -1,4 +1,10 @@
-"""Private Protect adapter isolated from Home Assistant concerns."""
+"""Authenticate, validate, and reconcile the private Protect REST and push APIs.
+
+The adapter owns session headers, copied device payloads, and independent
+verification clocks for devices, numeric readings, and alarm states. Home
+Assistant-specific lifecycle and entity publication live in the coordinator
+and platform modules.
+"""
 
 from __future__ import annotations
 
@@ -83,11 +89,11 @@ class ProtectApiError(Exception):
 
 
 class ProtectCannotConnect(ProtectApiError):
-    """Protect could not be reached."""
+    """A connection, timeout, or HTTP failure prevented a Protect operation."""
 
 
 class ProtectInvalidAuth(ProtectApiError):
-    """Protect rejected the supplied credentials."""
+    """Protect rejected login or denied a renewed authenticated session."""
 
 
 class ProtectPermissionDenied(ProtectApiError):
@@ -99,7 +105,7 @@ class ProtectWriteUnconfirmed(ProtectApiError):
 
 
 class ProtectTlsError(ProtectCannotConnect):
-    """The console TLS certificate is not trusted."""
+    """TLS negotiation or certificate verification failed for the console."""
 
 
 class ProtectStreamPermissionDenied(ProtectCannotConnect):
@@ -196,7 +202,11 @@ class _BootstrapPushes:
 
 
 def _host_for_url(host: str) -> str:
-    """Allow a canonical hostname or IP literal, not an injected origin."""
+    """Return a canonical host for a URL, bracketing IPv6 literals.
+
+    Accept only a hostname or IP address, not a scheme, port, path, credentials,
+    query, or fragment. Invalid input raises ProtectProtocolError.
+    """
     if not isinstance(host, str):
         raise ProtectProtocolError("Host must be a hostname or IP address")
     address = host.strip()
@@ -231,7 +241,7 @@ def _canonical_metric(metric: str) -> str:
 
 
 def _deep_merge(target: dict[str, Any], update: Mapping[str, Any]) -> None:
-    """Merge a partial WebSocket update without discarding nested readings."""
+    """Merge nested mappings into target in place, replacing other leaf values."""
     for key, value in update.items():
         current = target.get(key)
         if isinstance(current, dict) and isinstance(value, Mapping):
@@ -259,7 +269,11 @@ def _normalize_sensor_update(update: Mapping[str, Any]) -> dict[str, Any]:
 def _pushed_fields(
     current: Mapping[str, Any], update: Mapping[str, Any]
 ) -> set[_FieldPath]:
-    """Collect replaced fields, including values repeated by Protect."""
+    """Return leaf paths supplied by a push, including unchanged repeated values.
+
+    A path denotes the entire replacement when either side is not a mapping.
+    These paths preserve verified pushes while a slower bootstrap is in flight.
+    """
     paths = set()
     for name, value in update.items():
         before = current.get(name)
@@ -273,7 +287,7 @@ def _pushed_fields(
 def _copy_pushed_fields(
     target: dict[str, Any], current: Mapping[str, Any], paths: set[_FieldPath]
 ) -> None:
-    """Overlay only the pushed fields, retaining unrelated bootstrap values."""
+    """Copy the indicated paths from current into target, retaining other fields."""
     for path in paths:
         source, destination = current, target
         for name in path[:-1]:
@@ -290,7 +304,11 @@ def _copy_pushed_fields(
 
 
 def _contains_update(confirmed: Mapping[str, Any], update: Mapping[str, Any]) -> bool:
-    """Compare only requested fields while retaining other confirmed settings."""
+    """Check that confirmed state contains every requested field with its value.
+
+    Omitted and explicit null fields differ. Boolean values cannot match numeric
+    values, while finite integer and float representations may compare equal.
+    """
     for key, expected in update.items():
         if key not in confirmed:
             # Missing is distinct from an explicitly persisted null.
@@ -360,7 +378,13 @@ def snapshot_from_bootstrap(
     active_alarms: Mapping[str, tuple[ProtectAlarm, ...]] | None = None,
     uncertain_alarm_metrics: set[tuple[str, str]] | None = None,
 ) -> ProtectSnapshot:
-    """Convert a raw private bootstrap response into the adapter model."""
+    """Validate the full inventory and copy supported devices into a snapshot.
+
+    A valid empty inventory is allowed; duplicate or invalid sensor IDs and
+    incompatible known readings raise ProtectProtocolError. Unrelated sensor
+    models are skipped. Aggregate alarms and uncertainty are supplied by the
+    caller rather than inferred from numeric measurements.
+    """
     nvr = payload.get("nvr")
     sensors = payload.get("sensors")
     if not isinstance(nvr, Mapping) or not isinstance(sensors, list):
@@ -421,7 +445,13 @@ def snapshot_from_bootstrap(
 
 
 class PrivateProtectClient:
-    """Minimal async client for the private bootstrap and update stream."""
+    """Own one console's session, confirmed cache, and normalized alarm sources.
+
+    REST inventories repair missed pushes; fields verified during an in-flight
+    inventory take precedence over its older values. Settings writes serialize
+    through a read-back check instead of optimistically modifying the cache.
+    Methods and callbacks run on the caller's asyncio event loop.
+    """
 
     def __init__(
         self,
@@ -433,8 +463,14 @@ class PrivateProtectClient:
         password: str,
         verify_ssl: bool,
     ) -> None:
-        """Initialize this component with its entry-scoped dependencies."""
-        # Keep all mutable state scoped to this instance and its config entry.
+        """Configure one HTTPS console without performing network I/O.
+
+        The caller supplies a dedicated session with automatic cookies disabled
+        and reject_protect_redirects installed. This client owns that session
+        until async_close detaches it, leaving any shared connector intact.
+        Invalid host or port values raise ProtectProtocolError. verify_ssl=False
+        explicitly disables certificate verification for this connection only.
+        """
         host_part = _host_for_url(host)
         if (
             isinstance(port, bool)
@@ -480,24 +516,28 @@ class PrivateProtectClient:
         self._auth_failure_callback: Callable[[], None] | None = None
 
     def set_auth_failure_callback(self, callback: Callable[[], None]) -> None:
-        """Notify the owner when the stream requires new credentials."""
+        """Register the callback for terminal authentication failure."""
         self._auth_failure_callback = callback
 
     @property
     def snapshot(self) -> ProtectSnapshot | None:
-        """Return the current snapshot, if initialized."""
+        """Return the last snapshot without refreshing data or asserting freshness."""
         return self._snapshot
 
     def set_update_callback(
         self, callback: Callable[[ProtectSnapshot], None] | None
     ) -> None:
-        """Set the callback for push updates."""
+        """Set or clear the snapshot callback used for push and health changes."""
         self._update_callback = callback
 
     def subscribe_alarm_events(
         self, callback: Callable[[ProtectAlarmEvent], None]
     ) -> Callable[[], None]:
-        """Subscribe to normalized alarm transitions and return an unsubscribe."""
+        """Subscribe to future aggregate transitions; return an idempotent remover.
+
+        Existing alarm state is not replayed. Subscriber failures are isolated
+        when transitions are dispatched so other subscribers continue to run.
+        """
         self._alarm_callbacks.add(callback)
 
         def unsubscribe() -> None:
@@ -510,7 +550,11 @@ class PrivateProtectClient:
     async def _async_authenticate(
         self, *, rejected_generation: int | None = None
     ) -> None:
-        """Create one session, sharing renewals across concurrent requests."""
+        """Reuse or renew authentication once across concurrent requests.
+
+        A rejected generation triggers renewal only if it is still current.
+        Terminal rejection raises ProtectInvalidAuth until a new client is set up.
+        """
         async with self._auth_lock:
             if self._auth_failed:
                 raise ProtectInvalidAuth("Protect requires reauthentication")
@@ -528,7 +572,7 @@ class PrivateProtectClient:
             self._auth_generation += 1
 
     def _invalidate_session(self, generation: int) -> None:
-        """Discard only the session rejected by this request."""
+        """Clear headers and fail auth only if the rejected session is current."""
         if generation == self._auth_generation:
             self._headers.clear()
             self._auth_failed = True
@@ -573,7 +617,11 @@ class PrivateProtectClient:
             raise ProtectCannotConnect("Unable to connect to Protect") from err
 
     def is_device_fresh(self, device_id: str) -> bool:
-        """Require verified data within the freshness window, independent of TCP."""
+        """Check verification age and auth/protocol health, independent of TCP.
+
+        This does not check isConnected or inventory membership; entity
+        availability combines those conditions with this freshness result.
+        """
         verified = self._verified_at.get(device_id)
         return (
             not self.protocol_error
@@ -664,7 +712,12 @@ class PrivateProtectClient:
                 self._metric_verified_at[(device_id, metric)] = monotonic()
 
     async def async_get_snapshot(self) -> ProtectSnapshot:
-        """Refresh state and publish fail-closed health for every caller."""
+        """Return a refreshed snapshot and notify callers of auth/protocol failure.
+
+        Successful reads update the internal cache; the caller publishes the
+        returned snapshot. Network failures leave the existing verification ages
+        intact, while auth/protocol failures invalidate availability immediately.
+        """
         try:
             return await self._async_fetch_snapshot()
         except ProtectProtocolError:
@@ -679,7 +732,12 @@ class PrivateProtectClient:
             raise
 
     async def _async_fetch_snapshot(self) -> ProtectSnapshot:
-        """Publish a verified bootstrap with any newer confirmed stream fields."""
+        """Replace the cache from a valid inventory plus newer verified push fields.
+
+        A superseded request cannot overwrite newer state or poison its health.
+        A full inventory renews device timestamps and rebuilds numeric freshness;
+        alarm freshness is reconciled separately from statuses and events.
+        """
         await self._async_authenticate()
         self._refresh_request_id += 1
         request_id = self._refresh_request_id
@@ -724,7 +782,11 @@ class PrivateProtectClient:
     async def _async_read_bootstrap(
         self, *, request_id: int | None = None
     ) -> dict[str, Any]:
-        """Read a bounded Protect inventory with origin and session isolation."""
+        """Read a bounded inventory, retrying a rejected session at most once.
+
+        request_id prevents an obsolete request's auth rejection from invalidating
+        a newer successful refresh. This method does not publish the inventory.
+        """
         for attempt in range(2):
             generation = self._auth_generation
             try:
@@ -814,7 +876,14 @@ class PrivateProtectClient:
     async def async_update_device(
         self, device_id: str, update: Mapping[str, Any]
     ) -> None:
-        """Apply a partial settings update to one Protect sensor."""
+        """Serialize a partial settings PATCH and verify it with a fresh inventory.
+
+        Require an existing device and a nonempty update. A write-specific 403
+        raises ProtectPermissionDenied without invalidating read access. After
+        acceptance, publish the state actually returned by Protect; failed
+        verification, removal, or normalized values raise ProtectWriteUnconfirmed.
+        Never publish the requested values as if Protect had confirmed them.
+        """
         if device_id not in self._raw_devices:
             raise ProtectProtocolError("Air quality device is not available")
         if not update:
@@ -885,13 +954,17 @@ class PrivateProtectClient:
                 )
 
     def start_websocket(self) -> None:
-        """Start following private Protect updates in the background."""
+        """Start the background stream task once after an initial inventory load."""
         if self._ws_task is None or self._ws_task.done():
             self._closing = False
             self._ws_task = asyncio.create_task(self._websocket_loop())
 
     async def _websocket_loop(self) -> None:
-        """Recover the update stream with capped backoff until shutdown."""
+        """Resync before reconnecting, with backoff capped at thirty seconds.
+
+        Terminal authentication rejection stops retries. A stream-only permission
+        failure backs off while periodic REST monitoring can continue.
+        """
         # Resynchronize state before subscribing from the recovered cursor.
         backoff = 1
         while not self._closing:
@@ -999,7 +1072,11 @@ class PrivateProtectClient:
     def _apply_websocket_update(
         self, action: Mapping[str, Any], data: Mapping[str, Any]
     ) -> None:
-        """Validate partial sensor updates before replacing the confirmed cache."""
+        """Dispatch alarm events or merge a validated sensor add/update/remove.
+
+        Record paths and cursors for pending inventories before rebuilding the
+        snapshot. Unrelated model updates are ignored.
+        """
         model_key = action.get("modelKey")
         if model_key == "event":
             self._process_alarm_event(action, data)
@@ -1050,7 +1127,12 @@ class PrivateProtectClient:
     def _process_alarm_event(
         self, action: Mapping[str, Any], data: Mapping[str, Any]
     ) -> None:
-        """Normalize relevant private Protect event frames."""
+        """Track relevant event identities and update aggregate alarm state.
+
+        Merge partial event metadata so later ID-only endings can be resolved.
+        Reject unsupported alarm semantics; endings with unresolved older sources
+        retain uncertainty instead of manufacturing an all-clear transition.
+        """
         event_id = action.get("id") or data.get("id")
         operation = action.get("action")
         if not isinstance(event_id, str) or operation not in (
@@ -1176,8 +1258,10 @@ class PrivateProtectClient:
     ) -> None:
         """Replace transient sources with confirmed statuses after a full resync.
 
-        Absence of a status is not proof an alarm ended. Expire orphaned sources
-        silently and expose those metrics as unknown until confirmed again.
+        Preserve events received during this inventory request. Absence of a
+        status is not proof an alarm ended: retire older sources silently and
+        retain uncertainty. Availability still requires separate fresh alarm
+        evidence, so a retired source may first become unavailable, not unknown.
         """
         previous = self._alarm_states.copy()
         device_ids = {device.id for device in snapshot.devices}
@@ -1278,8 +1362,8 @@ class PrivateProtectClient:
             alarm = ProtectAlarm(metric, status, value)
             key = (device_id, metric)
             if status.casefold() in _NON_ALARM_STATUSES:
-                # A current normal reading, unlike a missing bootstrap status,
-                # authoritatively closes every outstanding event for this metric.
+                # A current normal reading resolves retired event identities and
+                # unresolvable history; still-active events remain independent sources.
                 for event_id, event in tuple(self._raw_alarm_events.items()):
                     if (
                         event_id not in self._active_alarm_events
@@ -1351,7 +1435,7 @@ class PrivateProtectClient:
                 )
 
     def _clear_device_alarm_states(self, device_id: str) -> None:
-        """Discard all transient alarm bookkeeping for a removed device."""
+        """Clear freshness clocks and alarm bookkeeping for a removed device."""
         self._verified_at.pop(device_id, None)
         for timestamps in (self._metric_verified_at, self._alarm_verified_at):
             for key in tuple(timestamps):
@@ -1410,14 +1494,14 @@ class PrivateProtectClient:
         )
 
     def _alarms_by_device(self) -> dict[str, tuple[ProtectAlarm, ...]]:
-        """Group active alarm events by their sensor device."""
+        """Group aggregate active alarms from both sensor and event sources."""
         grouped: dict[str, list[ProtectAlarm]] = {}
         for (device_id, _metric), alarm in self._alarm_states.items():
             grouped.setdefault(device_id, []).append(alarm)
         return {device_id: tuple(alarms) for device_id, alarms in grouped.items()}
 
     def _rebuild_snapshot(self, update_id: Any) -> None:
-        """Publish a fresh immutable snapshot from confirmed cached data."""
+        """Rebuild and publish the snapshot without renewing verification clocks."""
         # Keep the last known cursor when the frame does not include a new one.
         if self._snapshot is None:
             return
@@ -1440,7 +1524,7 @@ class PrivateProtectClient:
         self._notify_update()
 
     def _notify_update(self) -> None:
-        """Publish a confirmed snapshot to the coordinator."""
+        """Notify the subscriber of cached state or health changes, isolating errors."""
         if self._snapshot is not None and self._update_callback is not None:
             try:
                 self._update_callback(self._snapshot)
@@ -1450,7 +1534,11 @@ class PrivateProtectClient:
                 )
 
     async def async_close(self) -> None:
-        """Stop background work and close the client's dedicated HTTP session."""
+        """Cancel the stream, remove callbacks, and detach the dedicated session.
+
+        Detaching releases this session without closing Home Assistant's shared
+        connector. Repeated calls are safe after the stream task is cleared.
+        """
         self._closing = True
         self._update_callback = None
         self._alarm_callbacks.clear()

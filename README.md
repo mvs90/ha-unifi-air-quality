@@ -316,7 +316,7 @@ longer opens, follow the official
 | **TLS/certificate error** | Check that the host matches the certificate and that Home Assistant trusts its issuer. See [certificate errors](#certificate-errors-during-setup). |
 | **Setup succeeds but no devices appear** | Confirm the UP-AirQuality is adopted in this console and visible to the configured account. Allow a refresh to complete. |
 | **Measurements are unavailable** | Check the sensor is online in Protect and that Protect supplies that reading. Restore connectivity and wait for a refresh. |
-| **An alarm shows OK with a grey check mark** | OK means that alarm is not active. Home Assistant uses grey for the inactive state in its default theme. Missing or unconfirmed alarm data is shown as unknown or unavailable. |
+| **An alarm shows OK with a grey check mark** | OK means that alarm is not active. The device view uses the theme's normal icon color; OK does not automatically make it green. Missing or unconfirmed alarm data is shown as unknown or unavailable. |
 | **NOx is missing or has no value** | Enable the relevant NOx entities. Some firmware does not provide a numeric NOx reading. |
 | **Measurements work but controls fail** | Give the local account permission to change the sensor's settings in Protect. Read access alone is insufficient for controls. |
 | **An alarm cannot be enabled** | Set a lower or upper threshold first. |

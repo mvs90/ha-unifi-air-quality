@@ -79,8 +79,8 @@ Within that directory:
 At the repository root, `hacs.json` declares the package name and minimum HA
 version; `pyproject.toml` holds the Python/test/lint configuration. `tests/` holds
 synthetic fixtures and regressions. `dev/` contains disposable maintenance tools.
-CI workflows are under `.github/workflows/`, and the importable branch ruleset
-is under `.github/rulesets/`. The original artwork is under `assets/branding/`.
+CI workflows are under `.github/workflows/`. Branch protection is managed by
+repository maintainers. The original artwork is under `assets/branding/`.
 
 Keep Home Assistant-specific logic outside `api.py` and `websocket.py` so that
 the private transport can be replaced independently. Do not place UI setup or
@@ -118,7 +118,7 @@ Use the pinned versions and exact invocation in
 | Tool | Input and purpose |
 | --- | --- |
 | `dev/run_container_tests.py` | Runs pytest inside a disposable HA image; `HA_TEST_HELPERS` can select a compatible helper package. |
-| `dev/run_migration_smoke.py` | Runs fresh install, upstream install, fork upgrade and upstream rollback in separate processes using serialized test storage. |
+| `dev/run_migration_smoke.py` | Runs fresh install, original-version install, upgrade and rollback in separate processes using serialized test storage. |
 | `dev/check_compose_binding.py /path/to/compose.json` | Checks `docker compose -f dev/compose.yaml config --format json` output for the single loopback-only listener; starts no containers. |
 | `dev/check_dependency_audit.py /path/to/pip-audit.json` | Checks a resolved inventory against `security-advisories.json`, exception expiry and the declared HA baseline. |
 | `dev/check_secret_history.py` | Scans committed history; `HISTORY_BASE` and `HISTORY_HEAD` select full SHA bounds, and `--self-test` exercises detection in a temporary repository. |
@@ -135,8 +135,7 @@ the integration read-only. Start it with `docker compose -f dev/compose.yaml up 
 and stop it with `docker compose -f dev/compose.yaml down`. Do not use production
 configuration or publish that listener to the network.
 
-HACS and Hassfest validate packaging in CI. The required job names, final-head
-review process and live-rule verification are documented in the
-[maintainer ruleset guide](docs/maintainer-ruleset.md). Security policy and
-exception changes require explicit review; do not regenerate a secret baseline
-or loosen a check merely to make CI pass.
+HACS and Hassfest validate packaging in CI. Review the final PR commit and
+its checks before merging. Security policy and exception changes require
+explicit review; do not regenerate a secret baseline or loosen a check merely
+to make CI pass.

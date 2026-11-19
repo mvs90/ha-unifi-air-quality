@@ -1,17 +1,17 @@
 # Security policy
 
 Please report security issues privately through the repository's
-[Security page](https://github.com/Daniel-Dietz/ha-unifi-air-quality/security).
+[Security page](https://github.com/mvs90/ha-unifi-air-quality/security).
 Use **Report a vulnerability** when available. If private reporting is not
 available, open an issue asking only for a private security contact; include no
 vulnerability details. See [GitHub's private reporting guide](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately). Do not open a public issue containing credentials or
 unredacted diagnostics.
 
-Security fixes target the latest accepted **pinned commit** of fork version
+Security fixes target the latest accepted **pinned commit** of version
 0.6.0; unmerged candidates and moving-branch downloads are not reproducible
 supported builds. Record the full commit SHA alongside the installed manifest
 version, as described in [the install/rollback policy](docs/install-upgrade-rollback.md).
-No published fork release is claimed until an immutable release is created.
+No published release is claimed until an immutable release is created.
 This integration is intended for local network access to Protect and must not
 be used to expose a console publicly.
 
@@ -33,10 +33,9 @@ Actions are pinned to official 40-character commits (release tags are peeled to
 commits). HACS/Hassfest wrappers internally use mutable image tags, so their official
 images are invoked directly with registry-verified immutable SHA-256 digests.
 Review the official `hacs/action:main` and `home-assistant/hassfest:latest` image
-digests weekly alongside Dependabot PRs, update their workflow pins and run the
+digests weekly alongside dependency updates, update their workflow pins and run the
 complete validators before merging. Image updates are maintainer-owned; the
-weekly workflow does not grant write access to create update PRs. Dependabot
-checks action and Python pins weekly at 09:00 Europe/Berlin. Review upstream
+weekly workflow does not grant write access to create update PRs. Review action and Python dependency pins weekly. Review upstream
 changes and all CI results before merging its PRs. No workflow needs write permissions; checkout does not persist
 credentials in the Security job.
 
@@ -80,8 +79,8 @@ failures fail the check instead of silently passing. The history
 self-test creates two synthetic commits with an invalid AWS-shaped key, deletes
 it before the final tree, and requires detection. Logs reveal only the commit,
 detector and line number; secret values, file names and raw detector output are
-not published. The four required check names and activation procedure are in
-[the maintainer ruleset guide](docs/maintainer-ruleset.md).
+not published. The CI job definitions are maintained under `.github/workflows/`;
+branch protection is configured separately by repository maintainers.
 
 If a real credential is committed, revoke/rotate it immediately; removing its
 current line is insufficient. Stop publication, privately notify the maintainer,

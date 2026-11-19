@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.0 — fork hardening (pinned-commit distribution)
+## 0.6.0 — reliability and security improvements
 
 - Organize installation methods as Marketplace, HACS and manual download; expand
   configuration, alarm-display, recovery and code-level documentation.

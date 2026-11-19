@@ -74,7 +74,7 @@ prefer to manage downloads and updates in the Home Assistant interface.
 2. Select **Add from link** and enter:
 
    ```text
-   https://github.com/Daniel-Dietz/ha-unifi-air-quality
+   https://github.com/mvs90/ha-unifi-air-quality
    ```
 
 3. Connect GitHub when prompted, then select **Add**. If asked for a content
@@ -93,9 +93,9 @@ installed.
 
 1. Open **HACS**.
 2. Select **⋮ → Custom repositories**.
-3. Enter `https://github.com/Daniel-Dietz/ha-unifi-air-quality`, select
+3. Enter `https://github.com/mvs90/ha-unifi-air-quality`, select
    **Integration** as the type, and select **Add**.
-4. Find and open **UniFi Protect Air Quality** from **Daniel-Dietz**.
+4. Find and open **UniFi Protect Air Quality** from **mvs90**.
 5. Select **Download** and confirm.
 6. Restart Home Assistant and continue with the connection setup below.
 
@@ -117,7 +117,7 @@ First, make sure you can copy folders into Home Assistant:
   using your host's file manager. Home Assistant apps are not available with
   Container.
 
-1. **[Download the installation ZIP](https://github.com/Daniel-Dietz/ha-unifi-air-quality/archive/cd24231406d6d65798f48400029ab4dc01c30b9e.zip)** and extract it.
+1. **[Download the installation ZIP](https://github.com/mvs90/ha-unifi-air-quality/archive/cd24231406d6d65798f48400029ab4dc01c30b9e.zip)** and extract it.
    Keep the ZIP with its original filename alongside your backup.
 2. Open your **Home Assistant configuration directory**, the folder containing
    `configuration.yaml`. On Home Assistant OS this is normally `/config`.
@@ -333,7 +333,7 @@ entry for that console.
    - **HACS:** Open this repository in HACS and install its offered update.
      **Redownload** reinstalls the currently available package.
    - **Manual:** Download the ZIP linked in the repository's
-     [current README](https://github.com/Daniel-Dietz/ha-unifi-air-quality/blob/main/README.md)
+     [current README](https://github.com/mvs90/ha-unifi-air-quality/blob/main/README.md)
      and extract it outside the active component folder. Under **Settings →
      Devices & services**, disable **every** UniFi Protect Air Quality console
      entry using **⋮ → Disable**. If Home Assistant requests a restart, complete
@@ -381,7 +381,7 @@ For more details, open **Settings → System → Logs** and look for
 `unifi_air_quality`. You can download diagnostics from the integration entry's
 **⋮ → Download diagnostics** menu.
 
-If you need help, [open an issue](https://github.com/Daniel-Dietz/ha-unifi-air-quality/issues).
+If you need help, [open an issue](https://github.com/mvs90/ha-unifi-air-quality/issues).
 Include the installation method and exact installed commit or original ZIP
 filename, Home Assistant, Protect and sensor firmware versions, what you
 expected, and what happened. Review logs and

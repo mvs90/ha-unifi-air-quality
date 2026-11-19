@@ -1,4 +1,4 @@
-# Install, migrate and roll back a pinned fork build
+# Install, upgrade and roll back a pinned integration build
 
 For normal installation and configuration, start with the [user guide](../README.md).
 This page covers exact build identification, package replacement and recovery
@@ -6,9 +6,9 @@ while retaining an existing Home Assistant setup.
 
 ## Supported distribution and identity
 
-The fork identifies this change set as **0.6.0** in `manifest.json`,
+This integration identifies this change set as **0.6.0** in `manifest.json`,
 `pyproject.toml` and `CHANGELOG.md`. Its supported distribution is an **immutable
-full commit**, accepted into `Daniel-Dietz/ha-unifi-air-quality` main after the
+full commit**, accepted into `mvs90/ha-unifi-air-quality` main after the
 Tests, Security, HACS and Hassfest jobs and independent review pass. The accepted
 PR/merge record identifies the full 40-character commit. Fixes target the latest
 accepted pinned commit; earlier commits must be upgraded to receive fixes.
@@ -16,7 +16,7 @@ Feature branches and unmerged candidates are not supported deployments.
 
 A version number alone does not identify a commit. Record both `0.6.0` and the
 full accepted SHA, plus the Home Assistant version, in the installation notes.
-The installed component's `manifest.json` identifies the fork through its
+The installed component's `manifest.json` identifies the repository through its
 repository/issue links and reports `0.6.0`. The fixed ZIP linked from the README
 uses the full accepted commit in its download URL and original archive filename.
 Keep that ZIP with its original filename as the exact build record; users do not
@@ -42,28 +42,28 @@ with its own full backup; this component's rollback cannot downgrade HA itself.
    existing package source/version, console entry, entity IDs, user names and
    important automations. Save a copy of the currently installed
    `custom_components/unifi_air_quality` outside the active component directory.
-2. Select the full accepted commit from the fork's merged PR and verify its check
+2. Select the full accepted commit from a merged PR and verify its check
    and review results. Download that exact Git commit, not the branch ZIP. For
    example, on a separate machine, replace `FULL_ACCEPTED_COMMIT_SHA` below with
    that full SHA, then run:
 
    ```bash
    PINNED_COMMIT='FULL_ACCEPTED_COMMIT_SHA'
-   git clone --no-checkout https://github.com/Daniel-Dietz/ha-unifi-air-quality.git fork-staging
-   git -C fork-staging fetch origin "$PINNED_COMMIT"
-   git -C fork-staging checkout --detach "$PINNED_COMMIT"
-   git -C fork-staging rev-parse HEAD
-   printf '%s\n' "$PINNED_COMMIT" > fork-staging/custom_components/unifi_air_quality/BUILD_COMMIT
+   git clone --no-checkout https://github.com/mvs90/ha-unifi-air-quality.git integration-staging
+   git -C integration-staging fetch origin "$PINNED_COMMIT"
+   git -C integration-staging checkout --detach "$PINNED_COMMIT"
+   git -C integration-staging rev-parse HEAD
+   printf '%s\n' "$PINNED_COMMIT" > integration-staging/custom_components/unifi_air_quality/BUILD_COMMIT
    ```
 
    Confirm `rev-parse HEAD` equals the recorded full SHA and the staged manifest
    says `0.6.0`. An equivalent immutable archive URL is
-   `https://github.com/Daniel-Dietz/ha-unifi-air-quality/archive/FULL_COMMIT_SHA.tar.gz`;
+   `https://github.com/mvs90/ha-unifi-air-quality/archive/FULL_COMMIT_SHA.tar.gz`;
    replace the placeholder with the same accepted 40-character SHA. Keep the
    original archive filename containing that SHA, or record it in `BUILD_COMMIT`
    after extraction. Keep the archive or staged package for recovery.
 3. Plan a short restart window. Keep one component directory named exactly
-   `unifi_air_quality`; the upstream and fork share that domain and cannot run
+   `unifi_air_quality`; old and new builds share that domain and cannot run
    side by side. Do not copy a second integration with a different domain name.
 
 ## Fresh installation
@@ -76,9 +76,9 @@ record the installed version and original archive filename (or `BUILD_COMMIT`).
 Test controls only where you have write permission and can safely verify the
 result; do not induce a real safety alarm.
 
-## Upstream-to-fork or fork-to-fork upgrade
+## Upgrade an existing integration
 
-1. If HACS manages the upstream package, remove its downloaded repository/package
+1. If HACS manages the existing package, remove its downloaded repository/package
    from HACS before taking over manual management. **Keep the integration's
    existing config entry in Home Assistant.** Removing a HACS package and deleting
    the integration under Devices & services are different operations. Do not
@@ -93,9 +93,9 @@ result; do not induce a real safety alarm.
    readings and availability after a normal refresh and inspect sanitized
    diagnostics if there is an error.
 4. Keep the previous component backup and full HA backup until the new build has
-   completed the intended observation period. Leave the upstream HACS package
-   uninstalled while manually managing this domain, so an upstream update cannot
-   overwrite the fork. Do not enable two package managers for the same directory.
+   completed the intended observation period. Leave the HACS package
+   uninstalled while manually managing this domain, so a package-manager update
+   cannot overwrite the pinned files. Do not enable two package managers for the same directory.
 
 If file access depends on a Home Assistant app, the
 [README update procedure](../README.md#update) provides an alternative to stopping
@@ -109,7 +109,7 @@ removes the integration entries, devices and entities. It is not equivalent to
 the HACS package-only removal described above. Keep using Marketplace's update
 action for a Marketplace-managed copy.
 
-When immutable fork releases become available, HACS can manage the fork custom
+When immutable releases become available, HACS can manage this
 repository. Select a concrete release in HACS, record its SHA/version, and use
 its documented download/restart flow. Moving-branch HACS downloads do not provide
 the commit pin promised by the manual policy above.
@@ -125,7 +125,7 @@ entry schema version 1 and does not require a destructive data migration.
 The disposable test below checks preserved identities for its synthetic
 upstream 0.5.4 fixture; it does not make upstream 0.5.4 a supported security
 baseline or guarantee recovery of every installation. Prefer a previously
-accepted fork commit for normal rollback. If the problem also changed HA Core
+accepted integration commit for normal rollback. If the problem also changed HA Core
 or other integrations, use the matching full HA
 backup rather than assuming component files alone restore those changes.
 
@@ -148,15 +148,15 @@ Run `python dev/run_migration_smoke.py` from the repository root in the
 [test environment](../CONTRIBUTING.md#local-test-environment), with complete Git
 history available. It exports upstream **0.5.4** at commit
 `f4692adaffc2310974efd42a2b3856a156396a8a` and uses the current checkout for the
-fork, asserting the loaded module path and manifest version. In the documented
+updated integration, asserting the loaded module path and manifest version. In the documented
 HA 2026.10.4 environment, each phase runs a separate process with exactly one
 package:
 
 | Phase | Verified result |
 | --- | --- |
-| Fresh fork install | The fixture's 71 entities register on seven platforms, including five disabled NOx entities |
+| Fresh updated install | The fixture's 71 entities register on seven platforms, including five disabled NOx entities |
 | Upstream install | One console entry and customized entity/device registry stored |
-| Upgrade to fork | Entry/console/entity IDs, integration/entity options, user names and disabled state unchanged |
+| Upgrade to updated build | Entry/console/entity IDs, integration/entity options, user names and disabled state unchanged |
 | Rollback to upstream | The same stored identities and customizations remain unchanged |
 
 The harness serializes HA config-entry, entity-registry and device-registry

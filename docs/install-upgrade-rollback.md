@@ -13,9 +13,13 @@ Feature branches and unmerged candidates are not supported deployments.
 A version number alone does not identify a commit. Record both `0.6.0` and the
 full accepted SHA, plus the Home Assistant version, in the installation notes.
 The installed component's `manifest.json` identifies the fork through its
-repository/issue links and reports `0.6.0`; the `BUILD_COMMIT` marker described
-below identifies the exact package selected. The marker is local deployment
-metadata and contains no credentials. Include both values in bug reports.
+repository/issue links and reports `0.6.0`. The fixed ZIP linked from the README
+uses the full accepted commit in its download URL and original archive filename.
+Keep that ZIP with its original filename as the exact build record; users do not
+need Git or a manually created marker for this installation path. Include the
+archive filename and installed version in bug reports. The `BUILD_COMMIT` marker
+described below is an alternative for staged deployments that do not retain the
+archive. It contains the same public commit ID and no credentials.
 
 No published GitHub Release or release tag is claimed by this policy. Until a
 maintainer publishes an immutable release from an accepted commit, **HACS tracks
@@ -49,20 +53,22 @@ with its own full backup; this component's rollback cannot downgrade HA itself.
    Confirm `rev-parse HEAD` equals the recorded full SHA and the staged manifest
    says `0.6.0`. An equivalent immutable archive URL is
    `https://github.com/Daniel-Dietz/ha-unifi-air-quality/archive/FULL_COMMIT_SHA.tar.gz`;
-   replace the placeholder with the same accepted 40-character SHA and record it
-   in `BUILD_COMMIT` after extraction. Keep the staged package for recovery.
+   replace the placeholder with the same accepted 40-character SHA. Keep the
+   original archive filename containing that SHA, or record it in `BUILD_COMMIT`
+   after extraction. Keep the archive or staged package for recovery.
 3. Plan a short restart window. Keep one component directory named exactly
    `unifi_air_quality`; the upstream and fork share that domain and cannot run
    side by side. Do not copy a second integration with a different domain name.
 
 ## Fresh installation
 
-Stop Home Assistant, copy the complete staged `unifi_air_quality` folder into
-`<config>/custom_components/`, and start Home Assistant. Add **UniFi Protect Air
-Quality** in **Settings → Devices & services**, using a dedicated local Protect
-account and verified TLS. Check that readings agree with Protect, and record the
-installed version and `BUILD_COMMIT`. Test controls only where you have write
-permission and can safely verify the result; do not induce a real safety alarm.
+For a new installation, copy the complete staged `unifi_air_quality` folder into
+`<config>/custom_components/`, then restart Home Assistant. Add **UniFi Protect
+Air Quality** in **Settings → Devices & services**, using a dedicated local
+Protect account and verified TLS. Check that readings agree with Protect, and
+record the installed version and original archive filename (or `BUILD_COMMIT`).
+Test controls only where you have write permission and can safely verify the
+result; do not induce a real safety alarm.
 
 ## Upstream-to-fork or fork-to-fork upgrade
 
@@ -84,6 +90,17 @@ permission and can safely verify the result; do not induce a real safety alarm.
    completed the intended observation period. Leave the upstream HACS package
    uninstalled while manually managing this domain, so an upstream update cannot
    overwrite the fork. Do not enable two package managers for the same directory.
+
+If file access depends on a Home Assistant app, the
+[README update procedure](../README.md#update) provides an alternative to stopping
+Core: disable **all** entries for this integration, complete any requested
+restart before replacing files, replace the complete component folder, restart
+HA, then enable those same entries. Disabling preserves their configuration.
+This also applies when restoring a saved component package.
+
+Marketplace's **Delete and uninstall** removes the integration entries, devices
+and entities. It is not equivalent to the HACS package-only removal described
+above. Keep using Marketplace's update action for a Marketplace-managed copy.
 
 When immutable fork releases become available, HACS can manage the fork custom
 repository. Select a concrete release in HACS, record its SHA/version, and use

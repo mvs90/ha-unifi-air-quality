@@ -2,394 +2,355 @@
 
 <p align="center">
   <img src="custom_components/unifi_air_quality/brand/icon@2x.png"
-       alt="UniFi Protect Air Quality integration logo" width="180">
+       alt="UniFi Protect Air Quality" width="160">
 </p>
 
-An experimental, local-push Home Assistant custom integration for the UniFi
-Protect **UP-AirQuality** sensor. It communicates directly with the console;
-MQTT, a cloud account, and an additional bridge are not required.
+Bring your **UniFi Protect UP-AirQuality** sensors into Home Assistant.
+See temperature, humidity, carbon dioxide and air-quality readings, use alarms
+in automations, and adjust supported sensor settings from the device page.
 
-> [!WARNING]
-> This alpha uses Protect's undocumented private bootstrap and WebSocket APIs
-> because the Public Integration API does not expose continuous air-quality
-> readings yet. A dedicated API boundary keeps a later migration isolated.
+The integration connects directly to your Protect console over your local
+network. It does not need MQTT or an additional bridge.
 
-## Current milestone: measurements, controls, and alarm triggers
+## Contents
 
-Fork version `0.6.0` can:
+- [Before you start](#before-you-start)
+- [Prepare the Protect account](#prepare-the-protect-account)
+- [Install the integration](#install-the-integration)
+- [Connect Home Assistant to Protect](#connect-home-assistant-to-protect)
+- [Find your readings and configure the sensors](#find-your-readings-and-configure-the-sensors)
+- [Change the connection or password](#change-the-connection-or-password)
+- [Update or restore an installation](#update-or-restore-an-installation)
+- [Troubleshooting](#troubleshooting)
+- [Remove a sensor or the integration](#remove-a-sensor-or-the-integration)
 
-- configure a local Protect console through the Home Assistant UI;
-- authenticate with a dedicated local Protect user;
-- find adopted UP-AirQuality devices in the private bootstrap response;
-- follow private WebSocket updates with a 60-second bootstrap safety refresh;
-- register each sensor in the Home Assistant device registry;
-- expose twelve measurement entities with native Home Assistant device and
-  state classes; and
-- configure LEDs, night mode, vape sensitivity, and per-metric
-  alarms directly from Home Assistant;
-- expose current alarm states as binary sensors and WebSocket alarm transitions
-  as an event entity for automations; and
-- export allowlisted current sensor data with per-export aliases through Home Assistant
-  diagnostics.
+## Before you start
 
-The entities update from Protect WebSocket pushes and include Protect's
-classification (`safe`, `neutral`, and similar values) as the
-`protect_status` attribute.
+You need:
 
-### Alarm states and automation triggers
+- **Home Assistant 2026.10.4 or newer**, with an administrator account.
+- A UniFi console running **Protect**, with at least one **UP-AirQuality**
+  sensor already adopted and showing readings in Protect.
+- The console's local hostname or IP address and its HTTPS port, normally
+  **443**. Home Assistant must be able to reach that address.
+- A dedicated **local UniFi OS account** with access to Protect and the sensors.
+- A Home Assistant backup before installing or updating the integration.
 
-Each metric has a read-only **Alarm** binary sensor. It turns on when Protect
-reports a non-normal measurement status and off when the condition clears.
-This covers both alarm event frames and firmware versions that carry the
-transition only in the live sensor update.
+This integration is for **UP-AirQuality**. Configure the console's address,
+not the sensor's address. You add the integration once per console; its
+UP-AirQuality devices are then added automatically.
 
-The device also has one **Air quality alarm event** entity with these event
-types for every metric:
+## Prepare the Protect account
 
-- `<metric>_alarm_started`
-- `<metric>_alarm_ended`
+1. Open your UniFi console's **local web interface** and sign in as an
+   administrator.
+2. Open **Admins & Users**, select **Admins**, and add a dedicated account,
+   for example `homeassistant`. Menu names can vary with UniFi OS.
+3. Select **Restrict to local access only** and set a local username and password.
+4. Give the account Protect access and access to the UP-AirQuality devices:
+   reading measurements needs read access; changing LEDs, night mode or alarm
+   thresholds also needs permission to change sensor settings.
+5. Sign in locally with this account and check that it can see the sensor
+   readings. Keep its username and password for the Home Assistant setup.
 
-For example, CO2 emits `co2_alarm_started` and `co2_alarm_ended`; vape emits
-`vape_alarm_started` and `vape_alarm_ended`. Select this event entity as an
-automation trigger and choose the desired event type. Event data contains only
-the metric, Protect status, and numeric alarm value when supplied—never a
-credential or private Protect event identifier. Duplicate event and sensor
-updates are collapsed into one state transition.
+The [local-account instructions in Home Assistant's Protect documentation](https://www.home-assistant.io/integrations/unifiprotect/#add-a-local-user)
+show the UniFi account screens. **This integration asks for the local username
+and password; it has no API-key field.** A Ubiquiti cloud-only login cannot be
+used in that form.
 
-NOx also emits `nox_alarm_started` and `nox_alarm_ended`. The NOx index is read
-directly from Protect's `airQuality.nox` field, even when the Protect app does
-not display it. It is a relative, unitless index rather than a ppm reading.
-Older firmware that omits this field reports an unknown NOx measurement.
-Protect may also include the field but return `null`, as observed on the test
-device. In that case the NOx sensor remains unknown until the device firmware
-provides a numeric reading; adding the entity cannot create a missing reading.
+## Install the integration
 
-The five NOx entities (measurement, alarm state, alarm switch, and both
-thresholds) are disabled by default in Home Assistant. Enable them manually
-from the device's entity list when your firmware provides usable readings.
-Existing enabled/disabled choices are preserved when upgrading.
+For a **supported installation**, use the fixed ZIP in Option 1 and keep its
+original filename. It identifies the exact package for recovery and support.
 
-| Entity | Native unit |
+### Option 1: Download and copy the integration
+
+Use this option for a fixed installation package. HACS and a GitHub account
+are not required.
+
+First, make sure you can copy folders into Home Assistant:
+
+- **Home Assistant OS:** Use your existing file-management app or set up
+  [Samba share](https://www.home-assistant.io/common-tasks/os/#installing-and-using-the-samba-share-app).
+  Open its `config` share from your computer to copy the integration folder.
+- **Home Assistant Container:** Open the host folder mounted at `/config`
+  using your host's file manager. Home Assistant apps are not available with
+  Container.
+
+1. **[Download the installation ZIP](https://github.com/Daniel-Dietz/ha-unifi-air-quality/archive/9a9f37becad3f65307a588fdeba6602825aba694.zip)** and extract it.
+   Keep the ZIP with its original filename alongside your backup.
+2. Open your **Home Assistant configuration directory**, the folder containing
+   `configuration.yaml`. On Home Assistant OS this is normally `/config`.
+   With Home Assistant Container, use the host folder mounted at `/config`.
+   If unsure, check **Settings → System → Repairs → ⋮ → System information →
+   Configuration directory**.
+3. Create a folder named `custom_components` there if it does not already exist.
+4. In the extracted ZIP, open `custom_components`. Copy its entire
+   **`unifi_air_quality` folder**, including all subfolders, into Home Assistant's
+   `custom_components` folder.
+5. Check that the resulting file is:
+
+   ```text
+   /config/custom_components/unifi_air_quality/manifest.json
+   ```
+
+   The ZIP's outer `ha-unifi-air-quality-…` folder must not sit between
+   `custom_components` and `unifi_air_quality`.
+6. Restart Home Assistant: **Settings → System → power menu → Restart
+   Home Assistant → Restart**.
+7. Continue with [Connect Home Assistant to Protect](#connect-home-assistant-to-protect).
+
+See the official
+[configuration-directory guide](https://www.home-assistant.io/docs/configuration/)
+if you need help locating that folder.
+
+### Option 2: Home Assistant Marketplace
+
+On **Home Assistant 2026.11 or newer**, use the built-in Marketplace if you
+prefer to manage downloads and updates in the Home Assistant interface.
+
+1. Open **Settings → Marketplace**.
+2. Select **Add from link** and enter:
+
+   ```text
+   https://github.com/Daniel-Dietz/ha-unifi-air-quality
+   ```
+
+3. Connect GitHub when prompted, then select **Add**. If asked for a content
+   type, choose **Integration**.
+4. Open **UniFi Protect Air Quality**, select **Install**, and confirm.
+5. Follow the setup prompt. If Home Assistant requests a restart, complete it
+   first. You can also start setup manually as described below.
+
+See the official [Marketplace guide](https://www.home-assistant.io/integrations/marketplace/#custom-repositories)
+for the GitHub connection and download controls.
+
+### Option 3: HACS
+
+On **Home Assistant 2026.10.4–2026.10.x**, you can use HACS if it is already
+installed.
+
+1. Open **HACS**.
+2. Select **⋮ → Custom repositories**.
+3. Enter `https://github.com/Daniel-Dietz/ha-unifi-air-quality`, select
+   **Integration** as the type, and select **Add**.
+4. Find and open **UniFi Protect Air Quality** from **Daniel-Dietz**.
+5. Select **Download** and confirm.
+6. Restart Home Assistant and continue with the connection setup below.
+
+See [HACS custom repositories](https://www.hacs.xyz/docs/faq/custom_repositories/)
+if the repository is not listed.
+
+**Choose one installation method for this integration.** The fixed ZIP is covered
+by the [supported installation policy](docs/install-upgrade-rollback.md#supported-distribution-and-identity).
+Marketplace and HACS download moving repository contents; those unpinned
+packages are outside that support policy. These are optional download methods
+for users who choose to manage that limitation. Avoid having a package manager
+overwrite a manually maintained copy.
+
+## Connect Home Assistant to Protect
+
+1. Open **Settings → Devices & services**.
+2. Select **Add integration**.
+3. Search for **UniFi Protect Air Quality** and select that exact name.
+4. Fill in the connection form:
+
+| Field | What to enter |
 | --- | --- |
-| Air quality index | AQI |
+| **Host** | The Protect console's hostname, such as `protect.example.net`, or its local IP address. Enter only the hostname or IP: no `https://`, port or `/protect` path. |
+| **Port** | `443`, unless your console uses a different HTTPS port. |
+| **Local username** | The dedicated local account created above. |
+| **Password** | That account's local password. |
+| **Verify TLS certificate** | Leave enabled when Home Assistant trusts the console's certificate and the hostname matches it. |
+
+5. Submit the form. Home Assistant checks the connection and creates the
+   integration entry.
+6. Open the entry and its device list. Select your UP-AirQuality sensor and
+   compare its first readings with Protect. Allow about one minute for a refresh.
+7. Assign the device to a room and add the measurements you want to your
+   dashboard using Home Assistant's normal dashboard editor.
+
+Everything is configured through the interface. No `configuration.yaml`
+entries are needed.
+
+### Certificate errors during setup
+
+Home Assistant must trust the certificate presented by the console, and the
+host you enter must match that certificate. For a private certificate authority,
+trust must be configured in the Home Assistant runtime; accepting a browser
+warning does not do that.
+
+If your console has a self-signed certificate, the form allows you to turn off
+**Verify TLS certificate**. This disables verification of the console's identity
+and allows an attacker on the network to intercept credentials and readings.
+Prefer a trusted certificate. You can change this choice later with
+**Reconfigure**.
+
+## Find your readings and configure the sensors
+
+Open **Settings → Devices & services → UniFi Protect Air Quality**, then select
+a device. Home Assistant shows the device's measurements, alarm states and
+configuration controls there. Names follow your Home Assistant language.
+
+### Measurements
+
+| Measurement | Displayed unit |
+| --- | --- |
+| Air quality index | AQI, without a physical unit |
 | Carbon dioxide | ppm |
+| Temperature | °C, converted by Home Assistant where applicable |
 | Humidity | % |
-| Temperature | °C |
-| PM1, PM2.5, PM4, PM10 | µg/m³ |
-| Total volatile organic compounds | index (unitless) |
-| VOC index | index (unitless) |
-| NOx index | index (unitless) |
-| Vape index | index (unitless) |
+| PM1, PM2.5, PM4 and PM10 | µg/m³ |
+| Total volatile organic compounds (TVOC) | Protect value, without a declared unit |
+| VOC index, NOx index and vape index | No physical unit |
 
-### Configuration controls
+**NOx is disabled by default.** To use it, open the device's entity list, show
+disabled entities, select the NOx entities you need, and enable them in their
+settings. The firmware must also supply a reading. Enabling an entity cannot
+create a value that the device does not provide.
 
-All confirmed writable fields currently exposed by Protect are grouped under
-the device's **Configuration** section:
+Readings normally arrive automatically. A refresh also runs about once a minute.
+When a reading has not been confirmed for roughly two minutes, it becomes
+unavailable instead of presenting old data as current. Readings return
+automatically after the connection and data recover.
 
-- status light, activity feedback, LED ring brightness, and LED ring metric;
-- night mode, brightness, start time, and end time;
-- vape detection and vape sensitivity;
-- alarm enable switches for AQI, CO2, humidity, temperature, PM1, PM2.5, PM4,
-  PM10, TVOC, VOC, NOx, and vape; and
-- supported low and high thresholds for every alarm metric. Protect fixes the
-  vape lower threshold at zero, so only its writable high threshold is shown.
+### Device settings
 
-An alarm switch is on only when Protect has at least one non-null threshold.
-Setting a threshold automatically enables that alarm. Turning an alarm off
-clears both thresholds; enter a new low or high threshold to enable it again.
-The LED ring switch uses brightness zero for off and persistently restores the
-last non-zero brightness when switched back on. The brightness control remains
-available independently.
+The device's **Configuration** section contains these controls, where the
+console supplies the setting:
 
-Vape is a firmware-specific exception: its lower threshold is fixed at zero,
-its high threshold follows the vape-sensitivity value, and sending `null` does
-not clear those limits. The integration therefore disables a vape alarm via
-its `isEnabled` flag while preserving the device-managed thresholds.
+| Setting | What you can change |
+| --- | --- |
+| Status light and activity feedback | On or off |
+| LED ring | On/off, brightness, and whether it displays CO₂ or air quality |
+| Night mode | On/off, brightness, start time and end time |
+| Vape detection | On/off and sensitivity |
+| Measurement alarms | Enable state and lower/upper thresholds; vape has only an editable upper threshold |
 
-Protect reports unset thresholds as `null`; their Home Assistant number
-entities render this as `0` for a consistent numeric display. Internally the
-integration still distinguishes an unset threshold from an explicitly set
-zero, so alarm switches remain accurate. The opaque `alertInterval` and
-`readingInterval` fields are not exposed because Protect provides neither
-documented units nor supported ranges for them.
+Changes are sent to Protect and affect the physical sensor. They require write
+permission on the local account. Home Assistant displays the value confirmed by
+Protect. If a change is not confirmed immediately, wait for the next refresh and
+check the setting in Protect before trying again.
 
-## Installation
+### Alarm thresholds and automations
 
-### Supported pinned installation
+A measurement's **Alarm** entity reports its current alarm state. Its **Alerts**
+switch and threshold controls configure the alarm.
 
-Use an accepted **full commit SHA** of this maintained
-`Daniel-Dietz/ha-unifi-air-quality` fork for a reproducible installation. The
-manifest and project identify the fork as **0.6.0**. No published fork release or
-tag is implied. [Install, migrate and roll back](docs/install-upgrade-rollback.md)
-gives the complete sequence, build identification and disposable HA test evidence.
-Home Assistant **2026.10.4** is the minimum tested/audited baseline.
+- Set at least one lower or upper threshold to enable a measurement alarm.
+- Turning a measurement alarm off clears its thresholds. Enter a threshold again
+  to enable it.
+- Vape behaves differently: disabling its alarm retains the device-managed
+  thresholds. Changing vape sensitivity also changes the upper vape threshold.
+- An unset threshold is displayed as `0` in the number control. Check the
+  **Alerts** switch to distinguish an unset threshold from an enabled alarm.
+- An unknown or unavailable alarm state does **not** mean that the alarm cleared.
 
-For a fresh manual install, stage the complete component at the selected SHA,
-record its `BUILD_COMMIT`, stop HA, copy `custom_components/unifi_air_quality`
-into the configuration directory, and restart. Then add **UniFi Protect Air
-Quality** under **Settings → Devices & services**. For an existing installation,
-replace the package while retaining the config entry and registry data; follow
-the migration guide before changing package sources.
+For a simple notification, create an automation under **Settings → Automations
+& scenes**. Use a state trigger for the relevant alarm binary sensor, set **To**
+to `on`, leave **From** empty, and choose your notification action. This also
+captures a first alarm after an unknown or unavailable state. An alarm that is
+still active when the connection recovers can therefore trigger a notification.
 
-### HACS custom repository
+For event-based automations, the device also has an **Air quality alarm event**
+entity. Example event types are `co2_alarm_started`, `co2_alarm_ended`,
+`vape_alarm_started` and `vape_alarm_ended`.
 
-The fork can be added as an **Integration** custom repository using
-`https://github.com/Daniel-Dietz/ha-unifi-air-quality`. Until immutable GitHub
-releases are published, HACS downloads the moving default branch; use the pinned
-procedure above for the supported reproducible deployment. Upstream and fork
-share the same component directory, so only one package source may manage it.
-Do not delete the HA config entry when switching package sources.
+## Change the connection or password
 
-Setup dialogs, entity names, and selection options are translated into English,
-German, French, Spanish, Italian, Dutch, Polish, Portuguese (Portugal and Brazil),
-Swedish, Danish, Czech, Russian, Ukrainian, Simplified Chinese, and Japanese.
-Other languages fall back to English.
+**Address, port or certificate:** Open the existing integration entry's
+**⋮ → Reconfigure** action. Enter the changed host, port or TLS setting and
+submit. It must still be the same Protect console. Existing device names,
+entity IDs and automations remain associated with the entry.
 
-If an older installation shows repeated device names or generic
-"Problem" alarms, update to `0.5.1` or newer and restart Home Assistant. The
-display names are corrected without recreating the integration. Existing
-entity IDs and names you assigned yourself are preserved.
+**Changed password:** When Home Assistant asks you to reauthenticate, enter the
+new password for the same local username. This prompt updates the password;
+it does not change the username. Keep the existing integration entry.
 
-## Protect account
+**Another console:** Add a separate **UniFi Protect Air Quality** integration
+entry for that console.
 
-Create a dedicated **local** UniFi OS user with Protect read access. Do not use
-an owner account, Ubiquiti cloud SSO, or expose Protect to the internet. The
-password is stored by Home Assistant in the config entry and is never included
-in integration logs or diagnostics.
+## Update or restore an installation
 
-Expired sessions are renewed automatically with the stored credentials. The
-integration retries a rejected bootstrap request, settings update, or WebSocket
-handshake once. Concurrent requests share the renewed session. Home Assistant
-requests reauthentication only when login or the freshly authenticated request
-is rejected; a temporarily unreachable console remains a connection failure.
-Each config entry and each setup/reauthentication attempt uses its own HTTP
-session, never Home Assistant's shared session. The adapter owns generation-scoped
-cookie headers; automatic cookie storage is disabled so a delayed old response
-cannot replace the renewed session. After rejected credentials, automatic password logins stop until reauthentication succeeds;
-the WebSocket also requests reauthentication immediately.
+### Update
 
-New setups verify HTTPS and WSS certificates by default. Use a console
-certificate issued by a CA trusted by Home Assistant and a hostname matching
-its SAN. For a private CA, install/trust that CA in the Home Assistant runtime
-using your deployment's supported CA mechanism, then verify access before setup.
-Do not merely trust a certificate in a browser: HA's runtime must trust it.
-Existing entries retain their explicit TLS choice. Use **Reconfigure** on the
-existing integration entry to change its host, port or TLS verification. The
-validated destination must return the same console ID before the saved entry is
-updated and reloaded; entity IDs, custom names and options are preserved.
-Turning verification off is
-an explicit exception: it allows network attackers to intercept credentials,
-session cookies and readings. Prefer a trusted local-CA certificate.
+1. Create a Home Assistant backup under **Settings → System → Backups**.
+   Keep a copy outside the Home Assistant device and save its encryption key
+   if the backup is encrypted.
+2. Update through the installation method you already use:
+   - **Marketplace:** Install the offered update under **Settings → Updates**.
+   - **HACS:** Open this repository in HACS and install its offered update.
+     **Redownload** reinstalls the currently available package.
+   - **Manual:** Download the ZIP linked in the repository's
+     [current README](https://github.com/Daniel-Dietz/ha-unifi-air-quality#readme)
+     and extract it outside the active component folder. Under **Settings →
+     Devices & services**, disable **every** UniFi Protect Air Quality console
+     entry using **⋮ → Disable**. If Home Assistant requests a restart, complete
+     it before changing any files; resolve any disabling error before continuing.
+     Save the previous `unifi_air_quality` folder
+     outside `custom_components`, then replace the complete folder with the one
+     from the new ZIP. Finish copying before continuing.
+3. Restart Home Assistant to load the updated files.
+4. For a manual update, enable the same console entries again with **⋮ → Enable**.
+5. Open the existing devices and check their readings and your automations.
 
-Reading and monitoring require Protect read permission. Changing LEDs, night
-mode or thresholds additionally requires sensor-settings write permission.
-A forbidden PATCH (403) returns an actionable control error and preserves the
-read session; only an expired PATCH (401) gets one bounded session renewal.
-Settings are read back through bootstrap after each successful PATCH. If Protect
-normalizes or delays a setting, HA displays confirmed state and reports that the
-request is not yet confirmed. Refresh/wait before retrying; no optimistic value
-is published. Writes are serialized, and an in-flight older HTTP response cannot
-overwrite a newer push or completed refresh.
+**Keep the integration entry when updating.** Deleting it is not an update
+step. In Marketplace, **Delete and uninstall** also removes the integration's
+devices and entities, so use the update action instead.
 
-## Diagnostics
+### Restore after a problem
 
-After setup, open the integration's menu and select **Download diagnostics**.
-The export reports relative ages and freshness for each device, measurement and
-alarm, plus authentication, protocol and polling/stream health. See the
-[diagnostic health guide](docs/diagnostic-health.md) for interpretation.
-The export includes only current allowlisted measurements, selected settings,
-connection/protocol health and numeric Protect/device firmware versions. It omits
-hostnames, credentials, cookies, tokens, MACs, serials, names, history and unknown
-API fields, including newly introduced nested fields. Device IDs receive random
-aliases scoped to one export: correlation within that file is possible, while
-there is no stable cross-export hash/fingerprint. This is data minimization,
-not a guarantee of irreversible anonymity.
+Restore the Home Assistant backup made before the change from
+**Settings → System → Backups**. Keep your original installation ZIP or package
+backup until you have confirmed the update works. If Home Assistant itself no
+longer opens, follow the official
+[backup recovery instructions](https://www.home-assistant.io/common-tasks/general/backups/#restoring-a-backup).
 
-**Measurements, settings, firmware and device counts can still reveal household
-or operational information. Review exports before sharing; do not post them
-publicly without review.** Report issues to this fork's issue tracker.
+## Troubleshooting
 
-## Recovery, availability and private-API compatibility
+| Problem | What to check |
+| --- | --- |
+| **Integration does not appear under Add integration** | Confirm that `custom_components/unifi_air_quality/manifest.json` exists, perform a full Home Assistant restart, then refresh the browser. Check the minimum HA version and logs if it is still missing. |
+| **Cannot connect** | Use the console's address, not the sensor's. Check the separate HTTPS port, DNS and firewall access from Home Assistant to the console. |
+| **Invalid username or password** | Verify the dedicated account can sign in to the console locally and has Protect access. Use its local credentials. If its password changed, complete the reauthentication prompt. |
+| **TLS/certificate error** | Check that the host matches the certificate and that Home Assistant trusts its issuer. See [certificate errors](#certificate-errors-during-setup). |
+| **Setup succeeds but no devices appear** | Confirm the UP-AirQuality is adopted in this console and visible to the configured account. Allow a refresh to complete. |
+| **Measurements are unavailable** | Check the sensor is online in Protect and that Protect supplies that reading. Restore connectivity and wait for a refresh. |
+| **An alarm shows OK with a grey check mark** | OK means that alarm is not active. The device view uses the theme's normal icon color; OK does not automatically make it green. Missing or unconfirmed alarm data is shown as unknown or unavailable. |
+| **NOx is missing or has no value** | Enable the relevant NOx entities. Some firmware does not provide a numeric NOx reading. |
+| **Measurements work but controls fail** | Give the local account permission to change the sensor's settings in Protect. Read access alone is insufficient for controls. |
+| **An alarm cannot be enabled** | Set a lower or upper threshold first. |
+| **A changed setting returns to its previous value** | Check the confirmed setting in Protect and wait for the next refresh. The device may reject or adjust that value. |
+| **Reconfigure says the address belongs to another console** | Reconfigure only accepts the existing console. Add a separate entry for a different one. |
+| **Unsupported response after a Protect update** | Check for an integration update. If it continues, report the Home Assistant, Protect and sensor firmware versions with reviewed diagnostics. |
 
-Full refreshes are scheduled at least every 60 seconds (with a five-second
-health-timer granularity), independently of push traffic. If a push arrives
-during a refresh, its fields take precedence and the bootstrap still verifies
-other readings. A reading or confirmed alarm status is fresh for **120 seconds**
-after a verified bootstrap or a push confirming that value or status. An update to another metric,
-an empty heartbeat, or an unknown field cannot refresh an old reading. HA
-reevaluates availability every five seconds, so stale readings become unavailable
-within **125 seconds**. A connected WebSocket alone is insufficient evidence of
-fresh measurements. Device-offline flags still take effect immediately.
-Brief transport outages preserve only still-fresh data; successful refreshes
-or numeric/status pushes restore it automatically. Current-session REST credential
-rejections cause reauthentication and availability loss; superseded request
-failures cannot override a newer verified response. WebSocket-only 401/403
-denials are degraded update-stream health, not proof that monitoring credentials
-are invalid: the periodic REST snapshot continues and stale values expire
-normally. Real protocol failures still fail closed.
+For more details, open **Settings → System → Logs** and look for
+`unifi_air_quality`. You can download diagnostics from the integration entry's
+**⋮ → Download diagnostics** menu.
 
-Reconnects refresh bootstrap before following its cursor. Current measurement
-statuses replace transient alarm caches, clearing missed end events. An orphaned
-alarm without a confirming status expires to **unknown**. Recent event identities
-are retained so a later matching Protect end frame can resolve that alarm.
-A newer alarm ending does **not** confirm an older unresolved event or sensor-status
-source has ended. Sensor-only uncertainty needs an authoritative normal reading:
-the aggregate remains unknown until the last known source ends or a verified
-normal sensor status confirms all-clear. If bounded identity history is pruned,
-only an authoritative normal status can clear the remaining uncertainty.
-Existing public alarm event types and unique IDs are retained.
-Multiple event IDs and sensor/event sources remain aggregated during streaming.
-Repeated reconnect failures use 1, 2, 4, 8, 16, 30 second delays (30-second cap);
-a sustained connection resets this sequence. Logs contain error classes, not raw
-frames or exception payloads. Unload cancels the task and releases listeners.
+If you need help, [open an issue](https://github.com/Daniel-Dietz/ha-unifi-air-quality/issues).
+Include the installation ZIP filename or installed version, Home Assistant and
+Protect versions, what you expected, and what happened. Review logs and
+diagnostics before attaching them: measurements and settings can still describe
+your home. Never include passwords, tokens or raw unreviewed Protect responses.
 
-New devices are discovered on all seven entity platforms during push/refresh
-without reload. Removed devices' entities remain unavailable and retain registry
-settings/history; reappearance reuses the same IDs and user names.
+## Remove a sensor or the integration
 
-All authenticated HTTP requests use the configured canonical HTTPS host and
-port (DNS, IPv4 and IPv6 supported), refuse redirects and impose **25-second
-total / 10-second connect / 15-second read** deadlines. WebSocket handshakes
-have a **12-second opening deadline**, never follow redirects, and continue
-bounded reconnects on channel-specific denials. Protect sensor IDs must be
-single safe URL path segments. Controls compare verified server read-back
-using the expected wire type: a boolean cannot be confirmed by 0/1, missing is
-not the same as explicit null, and equivalent finite integer/float values
-are accepted. Public alarm keys keep the existing canonical names
-(pm1p0, pm2p5, pm4p0, pm10p0 and vape), while older wire aliases
-(pm1, pm2_5, pm4, pm10 and vapeIndex) are normalized in readings,
-freshness and events without entity-ID changes.
+**One sensor:** Remove/unpair it in Protect first. Then open its device page in
+Home Assistant and use **Delete**. Protect must be reachable so the integration
+can confirm removal. A sensor that is temporarily offline should remain in Home
+Assistant; its existing entities recover when it returns.
 
-The undocumented bootstrap, sensor PATCH and two-frame WebSocket APIs may change
-with any Protect/firmware upgrade. Known required schema/status changes produce
-an actionable HA update error and sanitized diagnostics instead of false alerts.
-Unknown optional fields are tolerated. Frames are limited to **1 MiB wire data
-per frame**, **2 MiB decompressed per frame**, and two frames per message; bounded
-zlib expansion rejects bombs, truncation and concatenated streams.
-Full bootstrap HTTP JSON bodies have a **16 MiB limit on both wire and decoded bytes**
-(including responses with no Content-Length). Gzip and deflate are decoded incrementally
-with bounded output; unsupported, truncated and concatenated encodings fail closed. Invalid/mixed or duplicate-ID inventories
-raise an actionable protocol error without replacing the previous registry.
-A genuinely empty inventory and unknown valid sensor models remain supported. Incompatible
-frames trigger a controlled reconnect/resync.
+**One console:** Delete only that console's integration entry under
+**Settings → Devices & services**. Keep the integration files while any other
+console still uses them.
 
-The regression fixtures cover the existing scalar Protect variant (fixture
-labels Protect **6.2.0**, firmware **1.0.0**) and the structured NOx/status variant
-whose versions were not recorded. These are **synthetic protocol fixtures**, not
-claims that hardware/firmware releases have been certified. This change has not
-been tested against a live Protect console. No other version support is claimed.
-Before a firmware upgrade, back up HA/configuration, record versions, test a
-reviewed bootstrap/diagnostic export, compare live readings with Protect, verify
-reconnect/offline behavior and a permitted control readback. Check alarms in a
-safe test environment; do not induce live safety alarms. Keep a rollback path
-and report changed schemas with reviewed diagnostic data.
+**The whole integration:** Remove all its console entries, then uninstall its
+files through Marketplace/HACS, or remove
+`custom_components/unifi_air_quality` for a manual installation. Restart Home
+Assistant. This permanently removes the integration setup.
 
-## Development
+## License
 
-Maintainers follow the [acceptance and branch-protection workflow](docs/maintainer-ruleset.md).
-The supplied ruleset must be applied and verified in GitHub; committing its JSON
-does not activate repository protection.
-
-Requirements: Docker and Python 3.14.2 or newer for the current test environment.
-
-```bash
-python3 -m venv .venv
-.venv/bin/pip install -e '.[test]'
-.venv/bin/pytest
-docker compose -f dev/compose.yaml up -d
-```
-
-The Docker configuration bind-mounts this checkout's `custom_components`
-directory, so a container restart picks up code changes:
-
-```bash
-docker compose -f dev/compose.yaml restart homeassistant
-docker compose -f dev/compose.yaml logs -f homeassistant
-```
-
-Home Assistant is available only on <http://127.0.0.1:8123>. The
-development Compose stack binds port 8123 to **loopback**, not LAN interfaces,
-to avoid exposing an unfinished onboarding screen. For remote development,
-use an authenticated SSH tunnel to port 8123. Explicitly publishing the port
-on a LAN interface is an operator opt-in and must not expose onboarding
-to untrusted networks. For example, forward a local port with
-`ssh -L 18123:127.0.0.1:8123 developer@dev-host` and browse
-`http://127.0.0.1:18123`. To deliberately publish on a trusted LAN instead, edit
-the Compose host address explicitly and review that host's firewall/onboarding
-state. Keep this development stack separate from production.
-
-Validate the effective publish address without starting containers:
-
-```bash
-docker compose -f dev/compose.yaml config --format json > /tmp/compose.json
-python dev/check_compose_binding.py /tmp/compose.json
-python dev/run_migration_smoke.py
-```
-
-The image, dependency audit and test environment all use the supported
-minimum **Home Assistant 2026.10.4**. Older 2026.8.x installations are not
-supported after the security-baseline review (#25): their resolved dependencies
-contained upstream advisories not covered by the reviewed current-version
-exception policy. Upgrade Home Assistant before upgrading this integration.
-
-Run the full suite in a disposable Home Assistant container, without mounting
-live configuration or publishing any ports:
-
-```bash
-docker run --rm -v "$PWD:/work:ro" --entrypoint python3 \
-  ghcr.io/home-assistant/home-assistant:2026.10.4 /work/dev/run_container_tests.py
-```
-
-The same runner supports development images and the new official Home Assistant
-test-helper package. The preview helper source is pinned for reproducibility;
-use `HA_TEST_HELPERS` to select the matching package when testing a newer image.
-See [the compatibility report](docs/hacs-readiness.md#home-assistant-compatibility)
-for the exact preview build checked. Disposable tests never mount the real
-Home Assistant configuration and do not contact Protect.
-The unit suite uses branch coverage with a minimum of 98%,
-including malformed frames, authentication failures, WebSocket reconnects,
-alarm start/end transitions, multi-source duplicate suppression, device
-lifecycle cleanup, entity lifecycle, NOx measurements and controls, automatic
-session renewal, concurrent expired requests, and all writable control
-combinations.
-
-## Removal
-
-For a permanently unpaired sensor, use the device page's **Delete** action. The
-integration verifies a new Protect inventory before allowing removal. A sensor
-that is merely offline remains protected, and a re-adopted sensor is discovered
-again. See [device cleanup and rediscovery](docs/device-lifecycle.md).
-
-To remove the entire integration, remove the config entry under **Settings → Devices & services**, then uninstall
-the repository in HACS and restart Home Assistant.
-
-## Known limitations
-
-- The private API can change with any Protect update.
-- Username/password authentication is required until the public API exposes
-  continuous readings and device-change notifications.
-- Automatic console discovery is not implemented.
-- This fork uses HACS custom-repository installation and bundled `brand/` images.
-  Historical upstream submission results are recorded separately in
-  [HACS submission readiness](docs/hacs-readiness.md).
-
-## Acknowledgements
-
-This integration builds on the groundwork shared by
-[Tommo-101](https://github.com/Tommo-101) in
-[UPAQ-MQTT](https://github.com/Tommo-101/UPAQ-MQTT).
-Thank you for the original work and for sharing the approach to accessing
-UP-AirQuality data through UniFi Protect. That contribution helped make this
-direct Home Assistant integration possible.
-
-This project is not affiliated with Ubiquiti Inc. UniFi and UniFi Protect are
-trademarks of their respective owner.
-
-## Support upstream development
-
-This fork retains the sponsorship links of **mvs90**, the author of the
-[original integration](https://github.com/mvs90/ha-unifi-air-quality).
-Contributions through [GitHub Sponsors](https://github.com/sponsors/mvs90),
-[PayPal](https://www.paypal.me/mvs90), or this repository's **Sponsor** button
-support **mvs90 and upstream development**. They do not go to the fork maintainer,
-Daniel-Dietz. The original MIT license and copyright attribution remain intact.
+[MIT](LICENSE). UniFi and UniFi Protect are trademarks of Ubiquiti Inc.
+This project is not affiliated with Ubiquiti.

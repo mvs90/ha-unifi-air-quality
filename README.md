@@ -77,7 +77,7 @@ First, make sure you can copy folders into Home Assistant:
   using your host's file manager. Home Assistant apps are not available with
   Container.
 
-1. **[Download the installation ZIP](https://github.com/Daniel-Dietz/ha-unifi-air-quality/archive/9a9f37becad3f65307a588fdeba6602825aba694.zip)** and extract it.
+1. **[Download the installation ZIP](https://github.com/Daniel-Dietz/ha-unifi-air-quality/archive/648aeaada3468b981d183a1ef206e411b00de50b.zip)** and extract it.
    Keep the ZIP with its original filename alongside your backup.
 2. Open your **Home Assistant configuration directory**, the folder containing
    `configuration.yaml`. On Home Assistant OS this is normally `/config`.

@@ -60,13 +60,52 @@ used in that form.
 
 ## Install the integration
 
-For a **supported installation**, use the fixed ZIP in Option 1 and keep its
-original filename. It identifies the exact package for recovery and support.
+Choose one method for your Home Assistant version: **Home Assistant Marketplace**
+(2026.11 or newer), **HACS** (2026.10.4–2026.10.x), or a **manual installation**
+without a package manager.
 
-### Option 1: Download and copy the integration
+### Option 1: Home Assistant Marketplace
 
-Use this option for a fixed installation package. HACS and a GitHub account
-are not required.
+On **Home Assistant 2026.11 or newer**, use the built-in Marketplace if you
+prefer to manage downloads and updates in the Home Assistant interface.
+
+1. Open **Settings → Marketplace**.
+2. Select **Add from link** and enter:
+
+   ```text
+   https://github.com/Daniel-Dietz/ha-unifi-air-quality
+   ```
+
+3. Connect GitHub when prompted, then select **Add**. If asked for a content
+   type, choose **Integration**.
+4. Open **UniFi Protect Air Quality**, select **Install**, and confirm.
+5. Follow the setup prompt. If Home Assistant requests a restart, complete it
+   first. You can also start setup manually as described below.
+
+See the official [Marketplace guide](https://www.home-assistant.io/integrations/marketplace/#custom-repositories)
+for the GitHub connection and download controls.
+
+### Option 2: HACS
+
+On **Home Assistant 2026.10.4–2026.10.x**, you can use HACS if it is already
+installed.
+
+1. Open **HACS**.
+2. Select **⋮ → Custom repositories**.
+3. Enter `https://github.com/Daniel-Dietz/ha-unifi-air-quality`, select
+   **Integration** as the type, and select **Add**.
+4. Find and open **UniFi Protect Air Quality** from **Daniel-Dietz**.
+5. Select **Download** and confirm.
+6. Restart Home Assistant and continue with the connection setup below.
+
+See [HACS custom repositories](https://www.hacs.xyz/docs/faq/custom_repositories/)
+if the repository is not listed.
+
+### Option 3: Download and copy the integration
+
+Use this option for a fixed, reproducible installation package. HACS and a
+GitHub account are not required. Keep the ZIP with its original filename for
+recovery and support.
 
 First, make sure you can copy folders into Home Assistant:
 
@@ -104,45 +143,8 @@ See the official
 [configuration-directory guide](https://www.home-assistant.io/docs/configuration/)
 if you need help locating that folder.
 
-### Option 2: Home Assistant Marketplace
-
-On **Home Assistant 2026.11 or newer**, use the built-in Marketplace if you
-prefer to manage downloads and updates in the Home Assistant interface.
-
-1. Open **Settings → Marketplace**.
-2. Select **Add from link** and enter:
-
-   ```text
-   https://github.com/Daniel-Dietz/ha-unifi-air-quality
-   ```
-
-3. Connect GitHub when prompted, then select **Add**. If asked for a content
-   type, choose **Integration**.
-4. Open **UniFi Protect Air Quality**, select **Install**, and confirm.
-5. Follow the setup prompt. If Home Assistant requests a restart, complete it
-   first. You can also start setup manually as described below.
-
-See the official [Marketplace guide](https://www.home-assistant.io/integrations/marketplace/#custom-repositories)
-for the GitHub connection and download controls.
-
-### Option 3: HACS
-
-On **Home Assistant 2026.10.4–2026.10.x**, you can use HACS if it is already
-installed.
-
-1. Open **HACS**.
-2. Select **⋮ → Custom repositories**.
-3. Enter `https://github.com/Daniel-Dietz/ha-unifi-air-quality`, select
-   **Integration** as the type, and select **Add**.
-4. Find and open **UniFi Protect Air Quality** from **Daniel-Dietz**.
-5. Select **Download** and confirm.
-6. Restart Home Assistant and continue with the connection setup below.
-
-See [HACS custom repositories](https://www.hacs.xyz/docs/faq/custom_repositories/)
-if the repository is not listed.
-
-**Choose one installation method for this integration.** The fixed ZIP is covered
-by the [supported installation policy](docs/install-upgrade-rollback.md#supported-distribution-and-identity).
+**Use only one installation method for this integration.** The fixed ZIP in
+Option 3 is covered by the [supported installation policy](docs/install-upgrade-rollback.md#supported-distribution-and-identity).
 Marketplace and HACS download moving repository contents; those unpinned
 packages are outside that support policy. These are optional download methods
 for users who choose to manage that limitation. Avoid having a package manager

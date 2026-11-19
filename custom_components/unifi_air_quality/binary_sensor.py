@@ -21,14 +21,22 @@ from .entity import UnifiAirQualityEntity, async_setup_dynamic_entities
 
 _NON_ALARM_STATUSES = frozenset({"good", "neutral", "normal", "safe"})
 
-# The device view does not enable state colors for binary-sensor icons. A native
-# entity picture keeps this fixed, self-contained check green in that view too.
+# The device view does not enable state colors for binary-sensor icons. Native
+# entity pictures keep confirmed states colored in that view too.
 # The transparent 40px canvas preserves the size of a normal icon in a HA badge.
 _NORMAL_ALARM_PICTURE = "data:image/svg+xml;base64," + b64encode(
     b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">'
     b'<circle cx="20" cy="20" r="10" fill="#2e7d32"/>'
     b'<path d="M14.5 20 18.3 23.8 25.5 16.6" fill="none" stroke="#fff" '
     b'stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>'
+    b"</svg>"
+).decode("ascii")
+_ACTIVE_ALARM_PICTURE = "data:image/svg+xml;base64," + b64encode(
+    b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">'
+    b'<circle cx="20" cy="20" r="10" fill="#c62828"/>'
+    b'<path d="M20 14.5v6" fill="none" stroke="#fff" '
+    b'stroke-width="2.3" stroke-linecap="round"/>'
+    b'<circle cx="20" cy="24.5" r="1.25" fill="#fff"/>'
     b"</svg>"
 ).decode("ascii")
 
@@ -135,11 +143,15 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
 
     @property
     def entity_picture(self) -> str | None:
-        """Show a green check only for a fresh, available and confirmed OK state."""
-        # Remove a previous OK picture on alarms, uncertainty or lost freshness;
-        # otherwise the image would hide Home Assistant's current status icon.
-        if self.available and self.is_on is False:
+        """Show green OK or red alarm pictures only for confirmed, fresh states."""
+        # Unknown or unavailable data must not retain a confirmed-state picture.
+        if not self.available:
+            return None
+        state = self.is_on
+        if state is False:
             return _NORMAL_ALARM_PICTURE
+        if state is True:
+            return _ACTIVE_ALARM_PICTURE
         return None
 
     @property

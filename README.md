@@ -237,10 +237,14 @@ check the setting in Protect before trying again.
 A measurement's **Alarm** entity reports its current alarm state. Its **Alerts**
 switch and threshold controls configure the alarm.
 
-A confirmed **OK** state shows a **green check mark** in Home Assistant's device
-view. An **unknown** alarm state shows a **question mark in a circle**. Active
-alarms and unavailable states use Home Assistant's normal status icons. The
-green check returns when current data confirms OK.
+In Home Assistant's device view, the alarm symbols show the current state:
+
+- **OK:** a green check mark in a circle.
+- **Alarm active:** a red exclamation mark in a circle.
+- **Unknown:** a question mark in a circle.
+- **Unavailable:** Home Assistant's normal unavailable-state presentation.
+
+The green check returns when current data confirms OK.
 
 - Set at least one lower or upper threshold to enable a measurement alarm.
 - Turning a measurement alarm off clears its thresholds. Enter a threshold again

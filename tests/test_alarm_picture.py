@@ -1,4 +1,4 @@
-"""Regression tests for green OK pictures in actual Home Assistant states."""
+"""Regression tests for alarm pictures in actual Home Assistant states."""
 
 import json
 from base64 import b64decode
@@ -86,7 +86,7 @@ def _alarm_state(hass, key="co2_alarm"):
 async def test_normal_alarm_pictures_preserve_boolean_states_and_identity(
     hass, load_fixture
 ):
-    """Expose a self-contained green check without changing alarm semantics."""
+    """Switch self-contained green/red pictures without changing alarm semantics."""
     async with _installed_alarms(hass, _normal_payload(load_fixture)) as (_, client, _):
         initial_states = {
             description.key: _alarm_state(hass, description.key)
@@ -124,7 +124,26 @@ async def test_normal_alarm_pictures_preserve_boolean_states_and_identity(
         alarm = _alarm_state(hass)
         assert alarm.state == STATE_ON
         assert ATTR_ICON not in alarm.attributes
-        assert ATTR_ENTITY_PICTURE not in alarm.attributes
+        red_picture = alarm.attributes[ATTR_ENTITY_PICTURE]
+        assert red_picture.startswith("data:image/svg+xml;base64,")
+        assert red_picture != picture
+        red_svg = fromstring(  # noqa: S314 - fixed integration asset, not external input
+            b64decode(red_picture.split(",", 1)[1], validate=True)
+        )
+        assert red_svg.tag == svg.tag
+        assert red_svg.attrib["viewBox"] == svg.attrib["viewBox"]
+        red_shapes = list(red_svg)
+        assert {shape.tag.rsplit("}", 1)[-1] for shape in red_shapes} == {
+            "circle",
+            "path",
+        }
+        assert any(shape.attrib.get("fill") == "#c62828" for shape in red_shapes)
+        assert any(shape.attrib.get("stroke") == "#fff" for shape in red_shapes)
+        assert all(
+            not key.endswith("href") and not value.startswith(("url(", "http"))
+            for element in red_svg.iter()
+            for key, value in element.attrib.items()
+        )
 
         push(client, {"airQuality": {"co2": {"status": "normal", "value": 600}}})
         await hass.async_block_till_done()
@@ -142,7 +161,7 @@ async def test_normal_alarm_pictures_preserve_boolean_states_and_identity(
 async def test_alarm_picture_is_removed_during_unavailability_and_restored(
     hass, load_fixture, failure
 ):
-    """Never retain an OK picture when device or metric health becomes invalid."""
+    """Never retain a state picture when device or metric health becomes invalid."""
     with patch(
         "custom_components.unifi_air_quality.api.monotonic", return_value=100
     ) as clock:
@@ -153,6 +172,12 @@ async def test_alarm_picture_is_removed_during_unavailability_and_restored(
         ):
             picture = _alarm_state(hass).attributes[ATTR_ENTITY_PICTURE]
             if failure == "offline":
+                # Losing connectivity must also remove a confirmed red alarm image.
+                push(client, {"airQuality": {"co2": {"status": "high", "value": 1400}}})
+                await hass.async_block_till_done()
+                active = _alarm_state(hass)
+                assert active.state == STATE_ON
+                assert active.attributes[ATTR_ENTITY_PICTURE] != picture
                 push(client, {"isConnected": False})
             elif failure == "coordinator_failure":
                 coordinator.async_set_update_error(UpdateFailed("Synthetic failure"))
@@ -218,7 +243,7 @@ async def test_unconfirmed_scalar_bootstrap_never_publishes_a_green_ok(
 async def test_uncertain_alarm_resolution_never_publishes_a_green_ok(
     hass, load_fixture
 ):
-    """Keep the picture absent until every outstanding alarm end is confirmed."""
+    """Remove alarm images during uncertainty until every end is confirmed."""
     events = json.loads(load_fixture("websocket_alarm_events.json"))
     async with _installed_alarms(hass, _normal_payload(load_fixture)) as (
         coordinator,
@@ -234,7 +259,9 @@ async def test_uncertain_alarm_resolution_never_publishes_a_green_ok(
         await hass.async_block_till_done()
         assert _alarm_state(hass).state == STATE_ON
         assert ATTR_ICON not in _alarm_state(hass).attributes
-        assert ATTR_ENTITY_PICTURE not in _alarm_state(hass).attributes
+        red_picture = _alarm_state(hass).attributes[ATTR_ENTITY_PICTURE]
+        assert red_picture.startswith("data:image/svg+xml;base64,")
+        assert red_picture != picture
 
         session.get_response = FakeResponse(
             payload=json.loads(load_fixture("bootstrap_air_quality.json"))

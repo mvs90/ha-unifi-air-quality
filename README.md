@@ -77,7 +77,7 @@ First, make sure you can copy folders into Home Assistant:
   using your host's file manager. Home Assistant apps are not available with
   Container.
 
-1. **[Download the installation ZIP](https://github.com/Daniel-Dietz/ha-unifi-air-quality/archive/9a9f37becad3f65307a588fdeba6602825aba694.zip)** and extract it.
+1. **[Download the installation ZIP](https://github.com/Daniel-Dietz/ha-unifi-air-quality/archive/648aeaada3468b981d183a1ef206e411b00de50b.zip)** and extract it.
    Keep the ZIP with its original filename alongside your backup.
 2. Open your **Home Assistant configuration directory**, the folder containing
    `configuration.yaml`. On Home Assistant OS this is normally `/config`.
@@ -237,6 +237,10 @@ check the setting in Protect before trying again.
 A measurement's **Alarm** entity reports its current alarm state. Its **Alerts**
 switch and threshold controls configure the alarm.
 
+A confirmed **OK** state shows a **green check mark** in Home Assistant's device
+view. Active alarms and unknown or unavailable states use Home Assistant's
+normal status icons. The green check returns when current data confirms OK.
+
 - Set at least one lower or upper threshold to enable a measurement alarm.
 - Turning a measurement alarm off clears its thresholds. Enter a threshold again
   to enable it.
@@ -316,7 +320,7 @@ longer opens, follow the official
 | **TLS/certificate error** | Check that the host matches the certificate and that Home Assistant trusts its issuer. See [certificate errors](#certificate-errors-during-setup). |
 | **Setup succeeds but no devices appear** | Confirm the UP-AirQuality is adopted in this console and visible to the configured account. Allow a refresh to complete. |
 | **Measurements are unavailable** | Check the sensor is online in Protect and that Protect supplies that reading. Restore connectivity and wait for a refresh. |
-| **An alarm shows OK with a grey check mark** | OK means that alarm is not active. The device view uses the theme's normal icon color; OK does not automatically make it green. Missing or unconfirmed alarm data is shown as unknown or unavailable. |
+| **OK still shows a grey check mark** | Update the integration, restart Home Assistant and refresh the page. The green check is supplied for a confirmed, available OK state. Custom dashboard cards may override or ignore entity pictures; Home Assistant's device view displays them. |
 | **NOx is missing or has no value** | Enable the relevant NOx entities. Some firmware does not provide a numeric NOx reading. |
 | **Measurements work but controls fail** | Give the local account permission to change the sensor's settings in Protect. Read access alone is insufficient for controls. |
 | **An alarm cannot be enabled** | Set a lower or upper threshold first. |

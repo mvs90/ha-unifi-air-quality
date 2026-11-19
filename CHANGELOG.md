@@ -2,6 +2,8 @@
 
 ## 0.6.0 — fork hardening (pinned-commit distribution)
 
+- Show a green check for fresh, confirmed OK alarm states in Home Assistant's
+  device view; remove the picture on alarms, uncertainty or lost availability.
 - Reconcile recovered alarm state; isolate forbidden writes from read sessions.
 - Verify TLS by default for new entries and recover unexpected stream failures.
 - Enforce freshness, schema validation and bounded WebSocket decoding.

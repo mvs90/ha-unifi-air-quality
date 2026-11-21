@@ -157,7 +157,9 @@ async def test_sensor_status_push_wins_over_concurrent_event_end(load_fixture):
     assert client.is_alarm_fresh("anonymous-air-quality-id", "co2")
 
 
-async def test_retired_event_update_restores_alarm_without_duplicate_start(load_fixture):
+async def test_retired_event_update_restores_alarm_without_duplicate_start(
+    load_fixture,
+):
     """Live continuation of a retired event restores availability and its source."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     events = json.loads(load_fixture("websocket_alarm_events.json"))

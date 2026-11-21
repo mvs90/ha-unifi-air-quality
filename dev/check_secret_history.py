@@ -4,6 +4,7 @@ Run from the repository root with a complete Git history and detect-secrets
 installed. HISTORY_HEAD defaults to HEAD; HISTORY_BASE selects the excluded base
 of a base..head range. Without a nonzero base, the complete head ancestry is
 scanned. A new-branch push trusts origin/main rather than its own exclusions.
+A trusted ancestor without a secret baseline grants no reviewed exceptions.
 ``--self-test`` checks synthetic violations in disposable repositories.
 
 Only a commit, detector name and line number leave this process. Blob contents,
@@ -51,6 +52,29 @@ def checked_commit(repository: Path, value: str) -> str:
         raise ValueError("History scan requires full commit SHAs")
     resolved = git(repository, "rev-parse", "--verify", value + "^{commit}")
     return resolved.decode().strip()
+
+
+def load_trusted_baseline(repository: Path, commit: str) -> dict:
+    """Read exclusions only from the trusted Git tree, never the PR checkout.
+
+    Commits predating adoption of .secrets.baseline have no reviewed exclusions.
+    Malformed or non-file baselines still fail closed; only genuine absence is
+    treated as an empty baseline.
+    """
+    entry = git(
+        repository, "ls-tree", "-z", commit, "--", ":(literal).secrets.baseline"
+    )
+    if not entry:
+        return {}
+    parts = entry.partition(b"\t")[0].split()
+    if len(parts) != 3 or parts[1] != b"blob":
+        raise RuntimeError("Trusted secret baseline is not a Git blob")
+    baseline = json.loads(
+        git(repository, "cat-file", "blob", parts[2].decode("ascii"))
+    )
+    if not isinstance(baseline, dict):
+        raise ValueError("Trusted secret baseline must be a JSON object")
+    return baseline
 
 
 def reviewed_findings(baseline: dict) -> set[tuple[str, str, str]]:
@@ -248,9 +272,62 @@ def self_test() -> None:
             clean, count = scan_history(repository, head, head, {})
             if clean or count:
                 raise RuntimeError("Empty history range produced findings")
+    # First-time adoption: the trusted base lacks the baseline, while the
+    # untrusted PR supplies one that falsely reviews its own synthetic secret.
+    # The PR baseline must never override the empty trusted exclusion set.
+    with TemporaryDirectory(prefix="protect-secret-baseline-test-") as directory:
+        repository = Path(directory)
+        git(repository, "init", "--quiet")
+        git(repository, "config", "user.name", "Scanner self-test")
+        git(repository, "config", "user.email", "self-test@example.invalid")
+        git(repository, "commit", "--allow-empty", "--quiet", "-m", "trusted base")
+        base = git(repository, "rev-parse", "HEAD").decode().strip()
+        source = repository / "introduced.py"
+        source.write_text('value = "' + "AKIA" + "A" * 16 + '"\n')
+        detected = scan_content(
+            source.read_bytes(), source.name, repository / "sample.py"
+        )
+        if len(detected) != 1 or detected[0].type != "AWS Access Key":
+            raise RuntimeError("Synthetic secret was not detected")
+        baseline = {
+            "results": {
+                source.name: [
+                    {
+                        "type": detected[0].type,
+                        "hashed_secret": detected[0].secret_hash,
+                        "is_secret": False,
+                    }
+                ]
+            }
+        }
+        (repository / ".secrets.baseline").write_text(json.dumps(baseline))
+        git(repository, "add", "introduced.py", ".secrets.baseline")
+        git(repository, "commit", "--quiet", "-m", "untrusted PR with baseline")
+        head = git(repository, "rev-parse", "HEAD").decode().strip()
+        if load_trusted_baseline(repository, base):
+            raise RuntimeError("Pre-baseline trusted tree granted exceptions")
+        if not reviewed_findings(load_trusted_baseline(repository, head)):
+            raise RuntimeError("Synthetic PR baseline did not contain an exception")
+        findings, count = scan_history(
+            repository, head, base, load_trusted_baseline(repository, base), base
+        )
+        if count != 1 or len(findings) != 1 or findings[0][1] != "AWS Access Key":
+            raise RuntimeError("PR-controlled baseline suppressed a secret")
+
+        # An existing but malformed trusted baseline is not an absent baseline.
+        (repository / ".secrets.baseline").write_text("{")
+        git(repository, "add", ".secrets.baseline")
+        git(repository, "commit", "--quiet", "-m", "malformed trusted baseline")
+        broken = git(repository, "rev-parse", "HEAD").decode().strip()
+        try:
+            load_trusted_baseline(repository, broken)
+        except json.JSONDecodeError:
+            pass
+        else:
+            raise RuntimeError("Malformed trusted baseline did not fail closed")
     print(
-        "History self-test passed: deleted keys, new pragmas "
-        "and baseline plaintext detected"
+        "History self-test passed: deleted keys, new pragmas, baseline plaintext "
+        "and pre-baseline trust boundaries detected"
     )
 
 
@@ -285,9 +362,7 @@ def main() -> int:
                 .strip()
             )
         baseline_commit = checked_commit(repository, trusted)
-        baseline = json.loads(
-            git(repository, "show", baseline_commit + ":.secrets.baseline")
-        )
+        baseline = load_trusted_baseline(repository, baseline_commit)
         findings, count = scan_history(
             repository, head, base, baseline, baseline_commit
         )

@@ -1232,8 +1232,11 @@ class PrivateProtectClient:
                 },
             }
             self._alarm_event_devices[event_id] = device_id
-            # A confirmed non-ending update also revives retired sources and
-            # refreshes their liveness without publishing another alarm start.
+            if operation == "update" and event_id in self._active_alarm_events:
+                # A live event's metadata-only update does not republish state.
+                return
+            # A confirmed update revives a source retired by the last bootstrap,
+            # refreshing freshness without emitting a duplicate alarm start.
             self._active_alarm_events[event_id] = alarm
 
         for pending in self._pending_bootstraps.values():

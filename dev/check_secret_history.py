@@ -111,7 +111,9 @@ def _known_static_nonsecret(content: bytes, filename: str, finding) -> bool:
         return line.strip() in {
             prefix + '"synthetic",',
             prefix + '"synthetic",  # pragma: allowlist secret -- test fixture only',
-            prefix + '"synthetic",  # pragma: allowlist secret -- synthetic TLS fixture.',
+            prefix
+            + '"synthetic",  # pragma: allowlist secret -- '
+            + "synthetic TLS fixture.",
         }
     if (
         filename != ".github/workflows/security.yml"

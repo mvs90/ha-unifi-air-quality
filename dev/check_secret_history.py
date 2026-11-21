@@ -115,6 +115,15 @@ def _known_static_nonsecret(content: bytes, filename: str, finding) -> bool:
             + '"synthetic",  # pragma: allowlist secret -- '
             + "synthetic TLS fixture.",
         }
+    if filename == "dev/check_secret_history.py":
+        # An early revision of this audit script contained sample credential
+        # *text* in a matcher and self-test, not an actual password assignment.
+        # Compare exact historical lines; never exempt new or altered values.
+        keyword = "pass" + "word="
+        return line.strip() in {
+            f"""return line.strip() == '{keyword}"synthetic",'""",
+            f"""b'{keyword}"new-private-secret",\\n',""",
+        }
     if (
         filename != ".github/workflows/security.yml"
         or line.strip() != "run: |"

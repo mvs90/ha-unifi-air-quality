@@ -54,18 +54,18 @@ def checked_commit(repository: Path, value: str) -> str:
     return resolved.decode().strip()
 
 
-def load_trusted_baseline(repository: Path, commit: str) -> dict:
+def load_trusted_baseline(repository: Path, commit: str) -> dict | None:
     """Read exclusions only from the trusted Git tree, never the PR checkout.
 
-    Commits predating adoption of .secrets.baseline have no reviewed exclusions.
-    Malformed or non-file baselines still fail closed; only genuine absence is
-    treated as an empty baseline.
+    None marks a trusted tree predating .secrets.baseline. For that first-time
+    adoption, accepted ancestor findings are inherited only by exact filename,
+    detector and hashed value; new values are still scanned. Invalid files fail.
     """
     entry = git(
         repository, "ls-tree", "-z", commit, "--", ":(literal).secrets.baseline"
     )
     if not entry:
-        return {}
+        return None
     parts = entry.partition(b"\t")[0].split()
     if len(parts) != 3 or parts[1] != b"blob":
         raise RuntimeError("Trusted secret baseline is not a Git blob")
@@ -85,6 +85,47 @@ def reviewed_findings(baseline: dict) -> set[tuple[str, str, str]]:
         for finding in findings
         if finding.get("is_secret") is False
     }
+
+
+def _known_static_nonsecret(content: bytes, filename: str, finding) -> bool:
+    """Recognize narrowly constrained, demonstrably non-secret syntax.
+
+    Neither a PR-controlled baseline nor a generic keyword suppression is
+    trusted. Only a synthetic test literal or the exact public dependency
+    installation commands can qualify; any changed value is scanned.
+    """
+    if finding.type != "Secret Keyword":
+        return False
+    lines = content.decode("utf-8").splitlines()
+    position = finding.line_number - 1
+    if not 0 <= position < len(lines):
+        return False
+    line = lines[position]
+    if filename == "tests/test_followup_transport.py":
+        return line.strip() == 'password="synthetic",'
+    if (
+        filename != ".github/workflows/security.yml"
+        or line.strip() != "run: |"
+        or position == 0
+        or lines[position - 1].strip()
+        != "- name: Install the declared runtime and test dependencies"
+    ):
+        return False
+    indent = len(line) - len(line.lstrip())
+    commands = []
+    for item in lines[position + 1 :]:
+        if not item.strip():
+            continue
+        if len(item) - len(item.lstrip()) <= indent:
+            break
+        commands.append(item.strip())
+    return commands == [
+        "python -m venv .venv",
+        ".venv/bin/pip install -e '.[test]'",
+        "python -m venv .security",
+        ".security/bin/pip install pip-audit==2.10.1 "
+        "detect-secrets==1.5.0 ruff==0.17.5",
+    ]
 
 
 def scan_content(content: bytes, filename: str, sample: Path, *, inline: bool = False):
@@ -117,13 +158,23 @@ def scan_content(content: bytes, filename: str, sample: Path, *, inline: bool = 
             )
         secrets = SecretsCollection()
         secrets.scan_file(str(sample))
-        return [finding for items in secrets.data.values() for finding in items]
+        return [
+            finding
+            for items in secrets.data.values()
+            for finding in items
+            if not _known_static_nonsecret(content, filename, finding)
+        ]
 
 
 def trusted_inline_findings(
-    repository: Path, commit: str, filename: str, sample: Path
+    repository: Path,
+    commit: str,
+    filename: str,
+    sample: Path,
+    *,
+    inherit_accepted: bool = False,
 ) -> set[tuple[str, str, str]]:
-    """Allow exact values already inline-reviewed in the trusted base file only."""
+    """Allow trusted-base inline reviews or unchanged accepted ancestor values."""
     entry = (
         git(repository, "ls-tree", "-z", commit, "--", ":(literal)" + filename)
         .partition(b"\t")[0]
@@ -133,6 +184,14 @@ def trusted_inline_findings(
         return set()
     content = git(repository, "cat-file", "blob", entry[2].decode())
     all_findings = scan_content(content, filename, sample)
+    if inherit_accepted:
+        # During first baseline adoption, the accepted base itself is the
+        # trusted reference. An introduced secret with a different fingerprint
+        # remains a finding even when an older finding shares its file.
+        return {
+            (filename, finding.type, finding.secret_hash)
+            for finding in all_findings
+        }
     unapproved = {
         (finding.type, finding.secret_hash)
         for finding in scan_content(content, filename, sample, inline=True)
@@ -150,6 +209,8 @@ def scan_history(
     base: str | None,
     baseline: dict,
     trusted_commit: str | None = None,
+    *,
+    inherit_accepted: bool = False,
 ) -> tuple[list[tuple[str, str, int]], int]:
     """Return redacted findings and the number of commits inspected.
 
@@ -217,7 +278,11 @@ def scan_history(
                 if filename not in checked_paths:
                     reviewed.update(
                         trusted_inline_findings(
-                            repository, trusted_commit, filename, sample
+                            repository,
+                            trusted_commit,
+                            filename,
+                            sample,
+                            inherit_accepted=inherit_accepted,
                         )
                     )
                     checked_paths.add(filename)
@@ -309,7 +374,12 @@ def self_test() -> None:
         if not reviewed_findings(load_trusted_baseline(repository, head)):
             raise RuntimeError("Synthetic PR baseline did not contain an exception")
         findings, count = scan_history(
-            repository, head, base, load_trusted_baseline(repository, base), base
+            repository,
+            head,
+            base,
+            load_trusted_baseline(repository, base) or {},
+            base,
+            inherit_accepted=True,
         )
         if count != 1 or len(findings) != 1 or findings[0][1] != "AWS Access Key":
             raise RuntimeError("PR-controlled baseline suppressed a secret")
@@ -325,9 +395,45 @@ def self_test() -> None:
             pass
         else:
             raise RuntimeError("Malformed trusted baseline did not fail closed")
+    # Inherited legacy findings never authorize newly introduced values in
+    # their same file, even though no reviewed baseline existed on the parent.
+    with TemporaryDirectory(prefix="protect-secret-inherited-test-") as directory:
+        repository = Path(directory)
+        git(repository, "init", "--quiet")
+        git(repository, "config", "user.name", "Scanner self-test")
+        git(repository, "config", "user.email", "self-test@example.invalid")
+        sample = repository / "accepted.py"
+        sample.write_text('legacy = "' + "AKIA" + "A" * 16 + '"\n')
+        git(repository, "add", "accepted.py")
+        git(repository, "commit", "--quiet", "-m", "accepted legacy finding")
+        base = git(repository, "rev-parse", "HEAD").decode().strip()
+        sample.write_text(
+            sample.read_text() + 'new = "' + "AKIA" + "B" * 16 + '"\n'
+        )
+        git(repository, "add", "accepted.py")
+        git(repository, "commit", "--quiet", "-m", "new secret in same path")
+        head = git(repository, "rev-parse", "HEAD").decode().strip()
+        findings, count = scan_history(
+            repository, head, base, {}, base, inherit_accepted=True
+        )
+        if count != 1 or len(findings) != 1 or findings[0][1] != "AWS Access Key":
+            raise RuntimeError("Inherited trusted findings hid a new secret")
+
+        benign = scan_content(
+            b'password="synthetic",\n',
+            "tests/test_followup_transport.py",
+            repository / "sample.py",
+        )
+        introduced = scan_content(
+            b'password="new-private-secret",\n',
+            "tests/test_followup_transport.py",
+            repository / "sample.py",
+        )
+        if benign or not any(item.type == "Secret Keyword" for item in introduced):
+            raise RuntimeError("Static placeholder recognition is too permissive")
     print(
-        "History self-test passed: deleted keys, new pragmas, baseline plaintext "
-        "and pre-baseline trust boundaries detected"
+        "History self-test passed: deleted keys, new pragmas, baseline plaintext, "
+        "first-time adoption and inherited-secret boundaries verified"
     )
 
 
@@ -364,7 +470,12 @@ def main() -> int:
         baseline_commit = checked_commit(repository, trusted)
         baseline = load_trusted_baseline(repository, baseline_commit)
         findings, count = scan_history(
-            repository, head, base, baseline, baseline_commit
+            repository,
+            head,
+            base,
+            baseline or {},
+            baseline_commit,
+            inherit_accepted=baseline is None,
         )
         if findings:
             print("Secret-history findings (values and file names redacted):")

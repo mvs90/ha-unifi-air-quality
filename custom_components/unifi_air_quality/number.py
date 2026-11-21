@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from homeassistant.components.number import (
@@ -17,18 +18,21 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import UnifiAirQualityConfigEntry
 from .const import DOMAIN
 from .coordinator import UnifiAirQualityCoordinator
-from .entity import UnifiAirQualityEntity
+from .entity import UnifiAirQualityEntity, async_setup_dynamic_entities
+
+_MISSING = object()
 
 
 @dataclass(frozen=True, kw_only=True)
 class AirQualityNumberDescription(NumberEntityDescription):
-    """Describe a writable numeric setting."""
+    """Map a numeric entity to its payload path and optional alarm activation."""
 
     path: tuple[str, ...]
     activates_alarm: bool = False
@@ -139,19 +143,43 @@ async def async_setup_entry(
     entry: UnifiAirQualityConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up writable numeric settings."""
+    """Remove two obsolete controls, then discover writable numeric settings.
+
+    Only this entry's exact ``reading_interval`` and ``vape_low_threshold``
+    identities are removed; all currently supported entity IDs are preserved.
+    """
     coordinator = entry.runtime_data.coordinator
     registry = er.async_get(hass)
-    obsolete_suffixes = ("_reading_interval", "_vape_low_threshold")
-    for registry_entry in list(registry.entities.values()):
-        if registry_entry.platform == DOMAIN and registry_entry.unique_id.endswith(
-            obsolete_suffixes
+    # Include previously paired devices retained through an outage, but never
+    # infer an identity from a suffix belonging to an unrelated entity or entry.
+    device_ids = {device.id for device in coordinator.data.devices}
+    device_ids.update(
+        identifier
+        for device in dr.async_entries_for_config_entry(
+            dr.async_get(hass), entry.entry_id
+        )
+        for domain, identifier in device.identifiers
+        if domain == DOMAIN
+    )
+    obsolete_ids = {
+        f"{device_id}_{key}"
+        for device_id in device_ids
+        for key in ("reading_interval", "vape_low_threshold")
+    }
+    for registry_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if (
+            registry_entry.domain == "number"
+            and registry_entry.platform == DOMAIN
+            and registry_entry.unique_id in obsolete_ids
         ):
             registry.async_remove(registry_entry.entity_id)
-    async_add_entities(
-        AirQualityNumber(coordinator, device.id, description)
-        for device in coordinator.data.devices
-        for description in NUMBER_DESCRIPTIONS
+    async_setup_dynamic_entities(
+        entry,
+        async_add_entities,
+        lambda device_id: (
+            AirQualityNumber(coordinator, device_id, description)
+            for description in NUMBER_DESCRIPTIONS
+        ),
     )
 
 
@@ -166,23 +194,37 @@ class AirQualityNumber(UnifiAirQualityEntity, NumberEntity):
         device_id: str,
         description: AirQualityNumberDescription,
     ) -> None:
+        """Bind the numeric setting's range, unit, and path to one device."""
         super().__init__(coordinator, device_id, description.key)
         self.entity_description = description
 
     @property
     def native_value(self) -> float | None:
-        value = self.raw_value(self.entity_description.path)
+        """Return a finite setting, displaying explicitly cleared thresholds as zero.
+
+        A missing field remains unknown. Only a present null threshold receives
+        the zero display fallback; this does not enable or write the alarm.
+        """
+        value = self.raw_value(self.entity_description.path, default=_MISSING)
         if value is None and self.entity_description.activates_alarm:
             return 0.0
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+        ):
             return None
         return float(value)
 
     async def async_set_native_value(self, value: float) -> None:
+        """Confirm a setting write, enabling its alarm when setting a threshold.
+
+        Vape sensitivity writes both the sensitivity and high-threshold fields.
+        Other thresholds include isEnabled=True; brightness writes only its value.
+        """
         normalized: int | float = int(value) if value.is_integer() else value
         if self.entity_description.key == "vape_sensitivity":
-            await self.coordinator.client.async_update_device(
-                self._device_id,
+            await self.async_write_update(
                 {
                     "airQualitySettings": {
                         "vapeSensitivitySettings": {"sensitivity": normalized},
@@ -194,8 +236,7 @@ class AirQualityNumber(UnifiAirQualityEntity, NumberEntity):
         if self.entity_description.activates_alarm:
             settings_key = self.entity_description.path[-2]
             threshold_key = self.entity_description.path[-1]
-            await self.coordinator.client.async_update_device(
-                self._device_id,
+            await self.async_write_update(
                 {
                     "airQualitySettings": {
                         settings_key: {

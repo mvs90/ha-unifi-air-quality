@@ -1,11 +1,11 @@
-"""Config flow for UniFi Protect Air Quality."""
+"""Configure a console, revalidate endpoint changes, and replace expired passwords."""
 
 from __future__ import annotations
 
 from typing import Any
 
 import voluptuous as vol
-from aiohttp import ClientSession, CookieJar
+from aiohttp import ClientSession, DummyCookieJar
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
@@ -24,18 +24,40 @@ from .api import (
     ProtectCannotConnect,
     ProtectInvalidAuth,
     ProtectProtocolError,
+    ProtectTlsError,
+    reject_protect_redirects,
 )
 from .const import CONF_VERIFY_SSL, DEFAULT_PORT, DEFAULT_VERIFY_SSL, DOMAIN
 
 
+def _validated_port(value: Any) -> int:
+    """Return an integer port in 1..65535 or raise ProtectCannotConnect.
+
+    Home Assistant's number selector may supply an integer-valued float.
+    Fractional values, booleans, strings, and non-finite values are rejected.
+    """
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not 1 <= value <= 65535
+        or int(value) != value
+    ):
+        raise ProtectCannotConnect("Invalid HTTPS port")
+    return int(value)
+
+
 def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
+    """Build the connection form, preserving any explicit saved TLS choice."""
+    # Only new connections receive the secure certificate-verification default.
     values = defaults or {}
     return vol.Schema(
         {
             vol.Required(CONF_HOST, default=values.get(CONF_HOST)): TextSelector(),
             vol.Required(
                 CONF_PORT, default=values.get(CONF_PORT, DEFAULT_PORT)
-            ): NumberSelector(NumberSelectorConfig(min=1, max=65535, mode="box")),
+            ): NumberSelector(
+                NumberSelectorConfig(min=1, max=65535, step=1, mode="box")
+            ),
             vol.Required(
                 CONF_USERNAME, default=values.get(CONF_USERNAME)
             ): TextSelector(),
@@ -50,14 +72,36 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     )
 
 
+def _reconfigure_schema(defaults: dict[str, Any]) -> vol.Schema:
+    """Expose only endpoint and TLS changes, not unnecessary credential edits."""
+    return vol.Schema(
+        {
+            vol.Required(CONF_HOST, default=defaults[CONF_HOST]): TextSelector(),
+            vol.Required(
+                CONF_PORT, default=defaults.get(CONF_PORT, DEFAULT_PORT)
+            ): NumberSelector(
+                NumberSelectorConfig(min=1, max=65535, step=1, mode="box")
+            ),
+            vol.Required(
+                CONF_VERIFY_SSL,
+                default=defaults.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+            ): BooleanSelector(),
+        }
+    )
+
+
 class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle configuration of a Protect console."""
 
     VERSION = 1
 
     async def _validate(self, data: dict[str, Any]) -> tuple[str, str]:
+        """Return console ID/name using an isolated, always-released HTTP session."""
+        # Detach the attempt's session even if construction or cancellation fails.
         session = async_create_clientsession(
-            self.hass, cookie_jar=CookieJar(unsafe=True)
+            self.hass,
+            cookie_jar=DummyCookieJar(),
+            middlewares=(reject_protect_redirects,),
         )
         try:
             return await self._validate_session(data, session)
@@ -67,6 +111,12 @@ class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def _validate_session(
         self, data: dict[str, Any], session: ClientSession
     ) -> tuple[str, str]:
+        """Fetch a valid inventory and return its console ID/name, closing the client.
+
+        Read access and schema compatibility are checked even for an empty
+        sensor inventory. Adapter exceptions retain their flow-specific meaning.
+        """
+        # The client owns this attempt's cookies and is closed on every exit path.
         client = PrivateProtectClient(
             session,
             host=data[CONF_HOST],
@@ -84,14 +134,19 @@ class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the initial user step."""
+        """Show connection settings or create a uniquely identified console entry."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            user_input[CONF_PORT] = int(user_input[CONF_PORT])
             try:
+                user_input = {
+                    **user_input,
+                    CONF_PORT: _validated_port(user_input[CONF_PORT]),
+                }
                 unique_id, title = await self._validate(user_input)
             except ProtectInvalidAuth:
                 errors["base"] = "invalid_auth"
+            except ProtectTlsError:
+                errors["base"] = "tls_error"
             except ProtectCannotConnect:
                 errors["base"] = "cannot_connect"
             except ProtectProtocolError:
@@ -107,8 +162,52 @@ class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=_schema(user_input), errors=errors
         )
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Validate host, port, and TLS changes against the saved console identity.
+
+        Keep credentials, entry identity, options, and registry mappings. Failed
+        validation leaves the saved entry untouched and shows the error in place.
+        """
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            changes = {
+                CONF_HOST: user_input[CONF_HOST],
+                CONF_PORT: user_input[CONF_PORT],
+                CONF_VERIFY_SSL: user_input[CONF_VERIFY_SSL],
+            }
+            try:
+                changes[CONF_PORT] = _validated_port(changes[CONF_PORT])
+                proposed = {**entry.data, **changes}
+                console_id, _ = await self._validate(proposed)
+            except ProtectInvalidAuth:
+                errors["base"] = "invalid_auth"
+            except ProtectTlsError:
+                errors["base"] = "tls_error"
+            except ProtectCannotConnect:
+                errors["base"] = "cannot_connect"
+            except ProtectProtocolError:
+                errors["base"] = "invalid_response"
+            except Exception:
+                errors["base"] = "unknown"
+            else:
+                if console_id != entry.unique_id:
+                    errors["base"] = "different_console"
+                else:
+                    # Keep entry ID, options, credentials and registry mappings.
+                    return self.async_update_reload_and_abort(
+                        entry, data_updates=changes, reason="reconfigure_successful"
+                    )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=_reconfigure_schema({**entry.data, **(user_input or {})}),
+            errors=errors,
+        )
+
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
-        """Start reauthentication."""
+        """Find the rejected entry and open its password replacement form."""
         self._reauth_entry = self.hass.config_entries.async_get_entry(
             self.context["entry_id"]
         )
@@ -117,7 +216,11 @@ class UnifiAirQualityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Validate replacement credentials."""
+        """Validate a new password for the same console, then update and reload.
+
+        Host, port, username, and the explicit TLS choice stay in the saved entry.
+        Connection or protocol failures keep the password form open.
+        """
         entry = self._reauth_entry
         if user_input is not None:
             data = {**entry.data, **user_input}

@@ -9,7 +9,12 @@ permissions:
 
 jobs:
   validate:
+    name: Hassfest validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: home-assistant/actions/hassfest@master
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      # Official image behind home-assistant/actions/hassfest, verified 2026-11-18.
+      - name: Validate with immutable Hassfest image
+        run: >-
+          docker run --rm -v "$GITHUB_WORKSPACE:/github/workspace"
+          ghcr.io/home-assistant/hassfest@sha256:b200bb178c5c62f984c2c705c820bd991e5308d6cba6987d24c7d643919ab5cc

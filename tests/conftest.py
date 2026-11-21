@@ -1,4 +1,4 @@
-"""Shared test fixtures."""
+"""Shared fixtures for synthetic data and isolated Home Assistant test storage."""
 
 from importlib.util import find_spec
 from pathlib import Path
@@ -24,9 +24,10 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 @pytest.fixture
 def load_fixture():
-    """Load a fixture as text."""
+    """Return a loader for UTF-8 JSON fixture text from tests/fixtures."""
 
     def _load(name: str) -> str:
+        """Read the named fixture without parsing or modifying its contents."""
         return (Path(__file__).parent / "fixtures" / name).read_text()
 
     return _load

@@ -32,6 +32,7 @@ def _device(
     status: object = "neutral",
     active_alarms: tuple[ProtectAlarm, ...] = (),
 ) -> AirQualityDevice:
+    """Build a synthetic device with a CO2 status and optional active alarm sources."""
     return AirQualityDevice(
         "device-id",
         "Office air",
@@ -44,6 +45,7 @@ def _device(
 
 
 def _coordinator(device: AirQualityDevice):
+    """Wrap one device in a successful mock coordinator with event subscription."""
     coordinator = MagicMock()
     coordinator.data = ProtectSnapshot("console", "Protect", "6.2", "1", (device,))
     coordinator.last_update_success = True
@@ -52,12 +54,17 @@ def _coordinator(device: AirQualityDevice):
 
 
 def _description(key: str):
+    """Find an alarm entity description by its stable key."""
     return next(item for item in ALARM_DESCRIPTIONS if item.key == key)
 
 
 async def test_alarm_platforms_add_all_entities(hass) -> None:
+    """Verify alarm platforms add all entities."""
     coordinator = _coordinator(_device())
-    entry = SimpleNamespace(runtime_data=SimpleNamespace(coordinator=coordinator))
+    entry = SimpleNamespace(
+        runtime_data=SimpleNamespace(coordinator=coordinator),
+        async_on_unload=MagicMock(),
+    )
     binary_entities = []
     event_entities = []
 
@@ -88,6 +95,7 @@ async def test_alarm_platforms_add_all_entities(hass) -> None:
     ],
 )
 def test_binary_alarm_interprets_measurement_status(status, expected) -> None:
+    """Verify binary alarm interprets measurement status."""
     entity = UnifiAirQualityAlarmBinarySensor(
         _coordinator(_device(status=status)), "device-id", _description("co2_alarm")
     )
@@ -95,6 +103,7 @@ def test_binary_alarm_interprets_measurement_status(status, expected) -> None:
 
 
 def test_binary_alarm_prefers_active_event_and_exposes_value() -> None:
+    """Verify binary alarm prefers active event and exposes value."""
     alarm = ProtectAlarm("co2", "high", 1200)
     entity = UnifiAirQualityAlarmBinarySensor(
         _coordinator(_device(active_alarms=(alarm,))),
@@ -118,6 +127,7 @@ def test_binary_alarm_prefers_active_event_and_exposes_value() -> None:
 
 
 def test_binary_alarm_missing_device_or_reading() -> None:
+    """Omit absent alarm attributes and return no boolean when the device is missing."""
     coordinator = _coordinator(_device())
     entity = UnifiAirQualityAlarmBinarySensor(
         coordinator, "device-id", _description("pm10_alarm")
@@ -133,6 +143,7 @@ def test_binary_alarm_missing_device_or_reading() -> None:
 
 
 async def test_event_entity_subscribes_filters_and_emits(hass) -> None:
+    """Verify event entity subscribes filters and emits."""
     coordinator = _coordinator(_device())
     entity = UnifiAirQualityAlarmEvent(coordinator, "device-id")
     entity.hass = hass

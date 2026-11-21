@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "Alleen de hostnaam of het IP-adres, zonder https://.",
-          "verify_ssl": "Schakel dit alleen in als Home Assistant het certificaat van de console vertrouwt."
+          "verify_ssl": "Verifieer de identiteit van de console (aanbevolen). Als verificatie wordt uitgeschakeld, kunnen aanmeldgegevens en meetwaarden worden onderschept."
         }
       },
       "reauth_confirm": {
@@ -23,18 +23,34 @@
         "data": {
           "password": "Wachtwoord"
         }
+      },
+      "reconfigure": {
+        "title": "UniFi Protect-verbinding bijwerken",
+        "description": "Valideer het nieuwe adres of certificaat voor dezelfde console. Bestaande apparaten en namen blijven behouden.",
+        "data": {
+          "host": "Host",
+          "port": "Poort",
+          "verify_ssl": "TLS-certificaat verifiëren"
+        },
+        "data_description": {
+          "host": "Alleen de hostnaam of het IP-adres, zonder https://.",
+          "verify_ssl": "Verifieer de identiteit van de console (aanbevolen). Als verificatie wordt uitgeschakeld, kunnen aanmeldgegevens en meetwaarden worden onderschept."
+        }
       }
     },
     "error": {
       "cannot_connect": "Kan geen verbinding maken met UniFi Protect.",
       "invalid_auth": "De gebruikersnaam of het wachtwoord is ongeldig.",
       "invalid_response": "Protect heeft een niet-ondersteund antwoord teruggestuurd.",
-      "unknown": "Onverwachte fout. Controleer de logboeken van Home Assistant."
+      "tls_error": "Het TLS-certificaat van de console wordt niet vertrouwd. Gebruik een certificaat dat is uitgegeven door een certificaatautoriteit die Home Assistant vertrouwt, en een hostnaam die overeenkomt met het certificaat.",
+      "unknown": "Onverwachte fout. Controleer de logboeken van Home Assistant.",
+      "different_console": "Het nieuwe adres hoort bij een andere Protect-console. Er zijn geen wijzigingen opgeslagen."
     },
     "abort": {
       "already_configured": "Deze Protect-console is al ingesteld.",
       "reauth_successful": "Het opnieuw aanmelden is gelukt.",
-      "unique_id_mismatch": "De aanmeldgegevens horen bij een andere Protect-console."
+      "unique_id_mismatch": "De aanmeldgegevens horen bij een andere Protect-console.",
+      "reconfigure_successful": "De bestaande Protect-verbinding is bijgewerkt."
     }
   },
   "entity": {

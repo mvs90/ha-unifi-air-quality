@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "Pouze název hostitele nebo IP adresa, bez https://.",
-          "verify_ssl": "Povolte pouze tehdy, pokud Home Assistant důvěřuje certifikátu konzole."
+          "verify_ssl": "Ověřovat identitu konzole (doporučeno). Vypnutí ověřování umožňuje zachytit přihlašovací údaje a naměřené hodnoty."
         }
       },
       "reauth_confirm": {
@@ -23,18 +23,34 @@
         "data": {
           "password": "Heslo"
         }
+      },
+      "reconfigure": {
+        "title": "Upravit připojení k UniFi Protect",
+        "description": "Ověřte novou adresu nebo certifikát pro tutéž konzoli. Stávající zařízení a názvy zůstanou zachovány.",
+        "data": {
+          "host": "Hostitel",
+          "port": "Port",
+          "verify_ssl": "Ověřit certifikát TLS"
+        },
+        "data_description": {
+          "host": "Pouze název hostitele nebo IP adresa, bez https://.",
+          "verify_ssl": "Ověřovat identitu konzole (doporučeno). Vypnutí ověřování umožňuje zachytit přihlašovací údaje a naměřené hodnoty."
+        }
       }
     },
     "error": {
       "cannot_connect": "Připojení k UniFi Protect se nezdařilo.",
       "invalid_auth": "Uživatelské jméno nebo heslo není platné.",
       "invalid_response": "Protect vrátil nepodporovanou odpověď.",
-      "unknown": "Neočekávaná chyba. Zkontrolujte protokoly Home Assistant."
+      "tls_error": "Certifikát TLS konzole není důvěryhodný. Použijte certifikát vydaný certifikační autoritou, které Home Assistant důvěřuje, a odpovídající název hostitele.",
+      "unknown": "Neočekávaná chyba. Zkontrolujte protokoly Home Assistant.",
+      "different_console": "Nová adresa patří jiné konzoli Protect. Žádné změny nebyly uloženy."
     },
     "abort": {
       "already_configured": "Tato konzole Protect je již nakonfigurována.",
       "reauth_successful": "Opětovné ověření bylo úspěšné.",
-      "unique_id_mismatch": "Přihlašovací údaje patří jiné konzoli Protect."
+      "unique_id_mismatch": "Přihlašovací údaje patří jiné konzoli Protect.",
+      "reconfigure_successful": "Stávající připojení k Protect bylo aktualizováno."
     }
   },
   "entity": {

@@ -1,29 +1,96 @@
-"""Shared entities for UniFi Protect Air Quality."""
+"""Share device discovery, stable entity identities, and confirmed writes."""
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable, Iterable
+from typing import TYPE_CHECKING, Any
 
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.core import Event, callback
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.device_registry import (
+    EVENT_DEVICE_REGISTRY_UPDATED,
+    DeviceInfo,
+)
+from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .api import ProtectApiError
 from .const import DOMAIN, MANUFACTURER
 from .coordinator import UnifiAirQualityCoordinator
 from .models import AirQualityDevice
 
+if TYPE_CHECKING:
+    from . import UnifiAirQualityConfigEntry
 
-def nested_value(data: dict[str, Any], path: tuple[str, ...]) -> Any:
-    """Read a value from a nested private-API payload."""
+
+@callback
+def async_setup_dynamic_entities(
+    entry: UnifiAirQualityConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+    factory: Callable[[str], Iterable[Entity]],
+) -> None:
+    """Create each device's platform entities once and track later discoveries.
+
+    The factory receives a Protect device ID and returns that platform's entities.
+    Both discovery and registry-removal listeners are removed on entry unload.
+    Keep entities on removal so registry names, IDs and history survive re-pairing.
+    Explicit UI removal forgets the submitted identity so re-adoption can create
+    entities again. Ordinary Protect disappearance keeps registry metadata.
+    """
+    coordinator = entry.runtime_data.coordinator
+    known: set[str] = set()
+
+    @callback
+    def discover() -> None:
+        """Submit only newly observed devices, including after an empty bootstrap."""
+        new_ids = {device.id for device in coordinator.data.devices} - known
+        # Reserve IDs before adding: entity callbacks may trigger another update.
+        known.update(new_ids)
+        if new_ids:
+            async_add_entities(
+                [
+                    entity
+                    for device_id in sorted(new_ids)
+                    for entity in factory(device_id)
+                ]
+            )
+
+    @callback
+    def forget_removed(event: Event) -> None:
+        """Forget only devices explicitly removed from this entry's HA registry."""
+        if event.data["action"] != "remove":
+            return
+        removed = event.data["device"]
+        if removed["config_entry_id"] != entry.entry_id:
+            return
+        known.difference_update(
+            identifier
+            for domain, identifier in removed["identifiers"]
+            if domain == DOMAIN
+        )
+
+    entry.async_on_unload(
+        coordinator.hass.bus.async_listen(EVENT_DEVICE_REGISTRY_UPDATED, forget_removed)
+    )
+    entry.async_on_unload(coordinator.async_add_listener(discover))
+    discover()
+
+
+def nested_value(
+    data: dict[str, Any], path: tuple[str, ...], *, default: Any = None
+) -> Any:
+    """Read a nested value, distinguishing absent fields when a default is given."""
     current: Any = data
     for key in path:
-        if not isinstance(current, dict):
-            return None
-        current = current.get(key)
+        if not isinstance(current, dict) or key not in current:
+            return default
+        current = current[key]
     return current
 
 
 def nested_update(path: tuple[str, ...], value: Any) -> dict[str, Any]:
-    """Build a minimal nested private-API PATCH body."""
+    """Wrap a value in the keys of a nonempty path to build a minimal PATCH."""
     update: Any = value
     for key in reversed(path):
         update = {key: update}
@@ -41,6 +108,7 @@ class UnifiAirQualityEntity(CoordinatorEntity[UnifiAirQualityCoordinator]):
         device_id: str,
         entity_key: str,
     ) -> None:
+        """Bind a device and entity key to stable IDs and shared device metadata."""
         super().__init__(coordinator)
         self._device_id = device_id
         self._attr_unique_id = f"{device_id}_{entity_key}"
@@ -56,7 +124,7 @@ class UnifiAirQualityEntity(CoordinatorEntity[UnifiAirQualityCoordinator]):
 
     @property
     def device(self) -> AirQualityDevice | None:
-        """Return the current device snapshot."""
+        """Look up the current device, or return None after inventory removal."""
         return next(
             (
                 device
@@ -68,16 +136,32 @@ class UnifiAirQualityEntity(CoordinatorEntity[UnifiAirQualityCoordinator]):
 
     @property
     def available(self) -> bool:
+        """Require coordinator health, device connectivity and verified freshness."""
+        # A cached isConnected flag alone cannot prove readings are still current.
         device = self.device
-        return super().available and device is not None and device.is_connected
+        return (
+            super().available
+            and device is not None
+            and device.is_connected
+            and self.coordinator.client.is_device_fresh(self._device_id)
+        )
 
-    def raw_value(self, path: tuple[str, ...]) -> Any:
-        """Read a raw setting from the current device."""
+    def raw_value(self, path: tuple[str, ...], *, default: Any = None) -> Any:
+        """Read a setting while preserving an explicit default for absent data."""
         device = self.device
-        return nested_value(device.raw, path) if device else None
+        return nested_value(device.raw, path, default=default) if device else default
 
     async def async_write_value(self, path: tuple[str, ...], value: Any) -> None:
-        """Write one setting through the private API adapter."""
-        await self.coordinator.client.async_update_device(
-            self._device_id, nested_update(path, value)
-        )
+        """Write one nested setting and require confirmation from Protect."""
+        await self.async_write_update(nested_update(path, value))
+
+    async def async_write_update(self, update: dict[str, Any]) -> None:
+        """Submit a verified settings update and translate adapter errors for HA.
+
+        The adapter publishes only values read back from Protect. A failed or
+        unconfirmed write raises HomeAssistantError instead of optimistic state.
+        """
+        try:
+            await self.coordinator.client.async_update_device(self._device_id, update)
+        except ProtectApiError as err:
+            raise HomeAssistantError(str(err)) from err

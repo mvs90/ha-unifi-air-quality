@@ -12,7 +12,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import UnifiAirQualityConfigEntry
 from .coordinator import UnifiAirQualityCoordinator
-from .entity import UnifiAirQualityEntity
+from .entity import UnifiAirQualityEntity, async_setup_dynamic_entities
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -47,10 +47,13 @@ async def async_setup_entry(
 ) -> None:
     """Set up night-mode time controls."""
     coordinator = entry.runtime_data.coordinator
-    async_add_entities(
-        AirQualityTime(coordinator, device.id, description)
-        for device in coordinator.data.devices
-        for description in TIME_DESCRIPTIONS
+    async_setup_dynamic_entities(
+        entry,
+        async_add_entities,
+        lambda device_id: (
+            AirQualityTime(coordinator, device_id, description)
+            for description in TIME_DESCRIPTIONS
+        ),
     )
 
 
@@ -65,11 +68,13 @@ class AirQualityTime(UnifiAirQualityEntity, TimeEntity):
         device_id: str,
         description: AirQualityTimeDescription,
     ) -> None:
+        """Bind the night-mode start or end setting to its stable entity ID."""
         super().__init__(coordinator, device_id, description.key)
         self.entity_description = description
 
     @property
     def native_value(self) -> time | None:
+        """Parse the stored ISO time string, returning None for invalid data."""
         value = self.raw_value(self.entity_description.path)
         if not isinstance(value, str):
             return None
@@ -79,6 +84,8 @@ class AirQualityTime(UnifiAirQualityEntity, TimeEntity):
             return None
 
     async def async_set_value(self, value: time) -> None:
+        """Write a night-mode time using Protect's HH:MM representation."""
+        # Drop seconds and timezone information; this is a device schedule clock time.
         await self.async_write_value(
             self.entity_description.path, value.strftime("%H:%M")
         )

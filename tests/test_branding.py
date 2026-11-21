@@ -24,6 +24,7 @@ BRAND_PATH = Path(__file__).parents[1] / "custom_components" / DOMAIN / "brand"
 async def test_bundled_brand_images_are_served_locally(
     hass, hass_client, requested, filename
 ):
+    """Verify bundled brand images are served locally."""
     assert await async_setup_component(hass, "brands", {})
     client = await hass_client()
     with patch.object(

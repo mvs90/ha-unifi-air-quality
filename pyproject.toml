@@ -4,15 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ha-unifi-air-quality"
-version = "0.5.4"
+version = "0.6.0"
 description = "Home Assistant custom integration for UniFi Protect UP-AirQuality"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14.2"
 license = "MIT"
 authors = [{ name = "mvs90" }]
 classifiers = [
   "Development Status :: 3 - Alpha",
-  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
 
@@ -23,7 +22,7 @@ test = [
   "pytest-asyncio==1.4.0",
   "pytest-cov==7.1.0",
   "pytest-homeassistant-custom-component==0.13.375",
-  "ruff>=0.12",
+  "ruff==0.17.5",
 ]
 
 [tool.pytest.ini_options]
@@ -36,11 +35,15 @@ addopts = "--strict-markers --cov=custom_components.unifi_air_quality --cov-repo
 branch = true
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 line-length = 88
 
 [tool.ruff.lint]
-select = ["B", "E", "F", "I", "UP"]
+select = ["B", "E", "F", "I", "S", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Assertions are pytest's API; these credentials are synthetic test data only.
+"tests/**" = ["S101", "S105", "S106"]
 
 [tool.setuptools]
 packages = []

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from base64 import b64encode
 from dataclasses import dataclass
 from typing import Any
 
@@ -14,10 +15,31 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import UnifiAirQualityConfigEntry
+from .const import MEASUREMENT_ALIASES
 from .coordinator import UnifiAirQualityCoordinator
-from .entity import UnifiAirQualityEntity
+from .entity import UnifiAirQualityEntity, async_setup_dynamic_entities
 
 _NON_ALARM_STATUSES = frozenset({"good", "neutral", "normal", "safe"})
+
+# The device view does not enable state colors for binary-sensor icons. Native
+# entity pictures keep confirmed states colored in that view too.
+# Cards ignoring entity_picture retain their usual MDI icons and state colors.
+# The transparent 40px canvas preserves the size of a normal icon in a HA badge.
+_NORMAL_ALARM_PICTURE = "data:image/svg+xml;base64," + b64encode(
+    b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">'
+    b'<circle cx="20" cy="20" r="10" fill="#2e7d32"/>'
+    b'<path d="M14.5 20 18.3 23.8 25.5 16.6" fill="none" stroke="#fff" '
+    b'stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>'
+    b"</svg>"
+).decode("ascii")
+_ACTIVE_ALARM_PICTURE = "data:image/svg+xml;base64," + b64encode(
+    b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">'
+    b'<circle cx="20" cy="20" r="10" fill="#c62828"/>'
+    b'<path d="M20 14.5v6" fill="none" stroke="#fff" '
+    b'stroke-width="2.3" stroke-linecap="round"/>'
+    b'<circle cx="20" cy="24.5" r="1.25" fill="#fff"/>'
+    b"</svg>"
+).decode("ascii")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -59,10 +81,13 @@ async def async_setup_entry(
 ) -> None:
     """Set up alarm state entities for every discovered device."""
     coordinator = entry.runtime_data.coordinator
-    async_add_entities(
-        UnifiAirQualityAlarmBinarySensor(coordinator, device.id, description)
-        for device in coordinator.data.devices
-        for description in ALARM_DESCRIPTIONS
+    async_setup_dynamic_entities(
+        entry,
+        async_add_entities,
+        lambda device_id: (
+            UnifiAirQualityAlarmBinarySensor(coordinator, device_id, description)
+            for description in ALARM_DESCRIPTIONS
+        ),
     )
 
 
@@ -77,11 +102,25 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
         device_id: str,
         description: AlarmBinarySensorDescription,
     ) -> None:
+        """Bind a metric description to this device's stable alarm entity ID."""
         super().__init__(coordinator, device_id, description.key)
         self.entity_description = description
 
     @property
+    def available(self) -> bool:
+        """Do not present an old alarm as current because another metric updates."""
+        return super().available and self.coordinator.client.is_alarm_fresh(
+            self._device_id, self.entity_description.payload_key
+        )
+
+    @property
     def is_on(self) -> bool | None:
+        """Return an active alarm, an uncertain state, or the cached classification.
+
+        Active aggregate sources take precedence over uncertainty. Missing
+        status falls back to False here; the separate availability check prevents
+        an unverified or stale alarm from being displayed as a confirmed OK.
+        """
         device = self.device
         if device is None:
             return None
@@ -90,13 +129,38 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
             for alarm in device.active_alarms
         ):
             return True
+        if self.entity_description.payload_key in device.uncertain_alarm_metrics:
+            return None
         status = self._measurement_status
         if status is None:
             return False
         return status.casefold() not in _NON_ALARM_STATUSES
 
     @property
+    def icon(self) -> str | None:
+        """Show a question mark only for an available but unknown alarm state."""
+        # The default problem icon is a check even for unknown; do not imply OK.
+        # Leave unavailable and confirmed states to their existing presentation.
+        if self.available and self.is_on is None:
+            return "mdi:help-circle"
+        return None
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Show green OK or red alarm pictures only for confirmed, fresh states."""
+        # Unknown or unavailable data must not retain a confirmed-state picture.
+        if not self.available:
+            return None
+        state = self.is_on
+        if state is False:
+            return _NORMAL_ALARM_PICTURE
+        if state is True:
+            return _ACTIVE_ALARM_PICTURE
+        return None
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Expose aggregate alarm details, falling back to the measurement status."""
         device = self.device
         if device is not None:
             for alarm in device.active_alarms:
@@ -110,11 +174,16 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
 
     @property
     def _measurement_status(self) -> str | None:
+        """Read a nonempty status from the current metric payload."""
+        # Missing or scalar measurements do not provide a confirmed alarm status.
         device = self.device
         air_quality = device.raw.get("airQuality") if device else None
         if not isinstance(air_quality, dict):
             return None
-        measurement = air_quality.get(self.entity_description.payload_key)
+        key = self.entity_description.payload_key
+        measurement = air_quality.get(key)
+        if key not in air_quality:
+            measurement = air_quality.get(MEASUREMENT_ALIASES.get(key))
         if not isinstance(measurement, dict):
             return None
         status = measurement.get("status")

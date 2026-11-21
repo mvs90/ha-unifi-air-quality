@@ -13,41 +13,74 @@ from custom_components.unifi_air_quality.api import (
     PrivateProtectClient,
     ProtectCannotConnect,
     ProtectInvalidAuth,
+    ProtectPermissionDenied,
     ProtectProtocolError,
+    ProtectStreamPermissionDenied,
 )
 from custom_components.unifi_air_quality.models import ProtectAlarm, ProtectAlarmEvent
 
 HEADER = struct.Struct("!bbbbi")
 
 
+class FakeResponseStream:
+    """Expose the same incremental byte semantics as aiohttp's response stream."""
+
+    def __init__(self, response):
+        """Keep the response's synthetic payload and cursor in one test stream."""
+        self._response = response
+        self._data = None
+        self._offset = 0
+
+    async def read(self, size):
+        """Read at most size bytes and trigger any injected response race once."""
+        if self._data is None:
+            self._data = json.dumps(await self._response.json()).encode()
+        data = self._data[self._offset : self._offset + size]
+        self._offset += len(data)
+        return data
+
+
 class FakeResponse:
+    """Model an async HTTP response with injected status, JSON and failure behavior."""
+
     def __init__(self, *, status=200, payload=None, headers=None, error=None):
+        """Store the synthetic status, payload, headers and optional exception."""
         self.status = status
         self._payload = payload
         self.headers = CIMultiDict(headers or {})
         self._error = error
+        self.content = FakeResponseStream(self)
 
     async def __aenter__(self):
+        """Reset a new response body's stream for each synthetic HTTP call."""
+        self.content = FakeResponseStream(self)
         return self
 
     async def __aexit__(self, *args):
+        """Leave the synthetic response context without suppressing exceptions."""
         return None
 
     def raise_for_status(self):
+        """Raise the configured exception without real HTTP status handling."""
         if self._error:
             raise self._error
 
     async def json(self, **kwargs):
+        """Return the configured JSON value, or raise an injected decoding exception."""
         if isinstance(self._payload, Exception):
             raise self._payload
         return self._payload
 
 
 class FakeSession:
+    """Record HTTP/WS calls and serve configured responses without opening sockets."""
+
     def detach(self):
+        """Mark the fake session closed without owning a real network connector."""
         self.closed = True
 
     def __init__(self, post, get, websocket=None, patch=None):
+        """Configure response objects or response queues and initialize call records."""
         self.post_response = post
         self.get_response = get
         self.websocket = websocket
@@ -58,18 +91,22 @@ class FakeSession:
         self.ws_calls = []
 
     def post(self, url, **kwargs):
+        """Record the login request and return its next configured response."""
         self.post_calls.append((url, kwargs))
         return self._next(self.post_response)
 
     def get(self, url, **kwargs):
+        """Record the bootstrap request and return its next configured response."""
         self.get_calls.append((url, kwargs))
         return self._next(self.get_response)
 
     def patch(self, url, **kwargs):
+        """Record the settings request and return its next configured response."""
         self.patch_calls.append((url, kwargs))
         return self._next(self.patch_response)
 
     async def ws_connect(self, url, **kwargs):
+        """Record the upgrade request and return or raise its configured outcome."""
         self.ws_calls.append((url, kwargs))
         websocket = self._next(self.websocket)
         if isinstance(websocket, Exception):
@@ -78,40 +115,53 @@ class FakeSession:
 
     @staticmethod
     def _next(response):
+        """Consume a queued response, or reuse a single configured response object."""
         return response.pop(0) if isinstance(response, list) else response
 
 
 class FakeMessage:
+    """Represent the payload and aiohttp message type delivered by a fake stream."""
+
     def __init__(self, data, message_type=WSMsgType.BINARY):
+        """Store message bytes and type, defaulting to a binary WebSocket message."""
         self.data = data
         self.type = message_type
 
 
 class FakeWebsocket:
+    """Provide a finite async stream and context manager for synthetic WS messages."""
+
     def __init__(self, messages):
+        """Retain the mutable message queue consumed by asynchronous iteration."""
         self.messages = messages
 
     async def __aenter__(self):
+        """Return this synthetic WebSocket when entering its async context."""
         return self
 
     async def __aexit__(self, *args):
+        """Leave the synthetic WebSocket context without suppressing exceptions."""
         return None
 
     def __aiter__(self):
+        """Use this object as the asynchronous message iterator."""
         return self
 
     async def __anext__(self):
+        """Consume the next message, or signal a clean end when the queue is empty."""
         if not self.messages:
             raise StopAsyncIteration
         return self.messages.pop(0)
 
 
 def _frame(data: dict) -> bytes:
+    """Encode one uncompressed JSON frame with the Protect binary header."""
     payload = json.dumps(data).encode()
     return HEADER.pack(1, 1, 0, 0, len(payload)) + payload
 
 
 def _client(session) -> PrivateProtectClient:
+    """Build a client using only the injected fake session and synthetic credentials."""
     return PrivateProtectClient(
         session,
         host="protect.local",
@@ -123,6 +173,7 @@ def _client(session) -> PrivateProtectClient:
 
 
 async def test_get_snapshot_authenticates_and_keeps_cookie(load_fixture) -> None:
+    """Verify get snapshot authenticates and keeps cookie."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     session = FakeSession(
         FakeResponse(
@@ -143,8 +194,13 @@ async def test_get_snapshot_authenticates_and_keeps_cookie(load_fixture) -> None
 
 
 async def test_update_device_patches_and_updates_snapshot(load_fixture) -> None:
+    """Verify update device patches and updates snapshot."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
-    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    confirmed = json.loads(json.dumps(payload))
+    confirmed["sensors"][0]["airQualitySettings"]["ringLedBrightness"] = 42
+    session = FakeSession(
+        FakeResponse(), [FakeResponse(payload=payload), FakeResponse(payload=confirmed)]
+    )
     client = _client(session)
     await client.async_get_snapshot()
     callback = MagicMock()
@@ -165,6 +221,7 @@ async def test_update_device_patches_and_updates_snapshot(load_fixture) -> None:
 
 
 async def test_update_device_validates_and_maps_errors(load_fixture) -> None:
+    """Verify update device validates and maps errors."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
     await client.async_get_snapshot()
@@ -182,11 +239,11 @@ async def test_update_device_validates_and_maps_errors(load_fixture) -> None:
         )
     )
     await unauthorized.async_get_snapshot()
-    with pytest.raises(ProtectInvalidAuth):
+    with pytest.raises(ProtectPermissionDenied):
         await unauthorized.async_update_device(
             "anonymous-air-quality-id", {"ledSettings": {"isEnabled": False}}
         )
-    assert unauthorized._headers == {}
+    assert not unauthorized._auth_failed
 
     offline = _client(
         FakeSession(
@@ -204,12 +261,14 @@ async def test_update_device_validates_and_maps_errors(load_fixture) -> None:
 
 @pytest.mark.parametrize("status", [401, 403])
 async def test_login_rejects_invalid_auth(status: int) -> None:
+    """Verify login rejects invalid auth."""
     client = _client(FakeSession(FakeResponse(status=status), FakeResponse()))
     with pytest.raises(ProtectInvalidAuth):
         await client.async_get_snapshot()
 
 
 async def test_login_connection_error() -> None:
+    """Verify login connection error."""
     client = _client(
         FakeSession(
             FakeResponse(error=ClientConnectionError("offline")), FakeResponse()
@@ -220,6 +279,7 @@ async def test_login_connection_error() -> None:
 
 
 async def test_bootstrap_auth_and_protocol_errors() -> None:
+    """Verify bootstrap auth and protocol errors."""
     client = _client(FakeSession(FakeResponse(), FakeResponse(status=401)))
     with pytest.raises(ProtectInvalidAuth):
         await client.async_get_snapshot()
@@ -245,6 +305,7 @@ async def test_bootstrap_auth_and_protocol_errors() -> None:
 
 
 async def test_websocket_push_updates_snapshot(load_fixture) -> None:
+    """Verify websocket push updates snapshot."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     action = {
         "action": "update",
@@ -266,12 +327,13 @@ async def test_websocket_push_updates_snapshot(load_fixture) -> None:
 
     assert client.snapshot.devices[0].raw["airQuality"]["co2"] == 800
     assert client.snapshot.devices[0].raw["airQuality"]["aqi"] == 17
-    callback.assert_called_once()
+    assert callback.call_count == 2
 
 
 async def test_sensor_status_updates_emit_deduplicated_alarm_transitions(
     load_fixture,
 ) -> None:
+    """Verify sensor status updates emit deduplicated alarm transitions."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
     await client.async_get_snapshot()
@@ -279,6 +341,7 @@ async def test_sensor_status_updates_emit_deduplicated_alarm_transitions(
     client.subscribe_alarm_events(callback)
 
     def status_frame(status, value=1200):
+        """Encode a complete sensor update carrying one CO2 status and value."""
         return _frame(
             {
                 "action": "update",
@@ -323,26 +386,30 @@ async def test_sensor_status_updates_emit_deduplicated_alarm_transitions(
             }
         )
     )
-    assert callback.call_args.args[0] == ProtectAlarmEvent(
-        "anonymous-air-quality-id", "boolean_value", "started", "high", None
-    )
+    # Optional unknown metrics never create alarm transitions.
+    assert callback.call_count == 2
 
 
 async def test_websocket_add_remove_and_ignored_frames(load_fixture) -> None:
+    """Verify websocket add remove and ignored frames."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
     await client.async_get_snapshot()
 
-    client._process_websocket_payload(b"bad")
+    with pytest.raises(ProtectProtocolError):
+        client._process_websocket_payload(b"bad")
+    await client.async_get_snapshot()
     client._process_websocket_payload(
         _frame({"action": "update", "modelKey": "camera", "id": "x"}) + _frame({})
     )
-    client._process_websocket_payload(
-        _frame({"action": "update", "modelKey": "sensor"}) + _frame({"id": 42})
-    )
-    client._process_websocket_payload(
-        _frame({"action": "unknown", "modelKey": "sensor", "id": "x"}) + _frame({})
-    )
+    with pytest.raises(ProtectProtocolError):
+        client._process_websocket_payload(
+            _frame({"action": "update", "modelKey": "sensor"}) + _frame({"id": 42})
+        )
+    with pytest.raises(ProtectProtocolError):
+        client._process_websocket_payload(
+            _frame({"action": "unknown", "modelKey": "sensor", "id": "x"}) + _frame({})
+        )
     client._process_websocket_payload(
         _frame({"action": "add", "modelKey": "sensor", "id": "new"})
         + _frame(
@@ -368,6 +435,7 @@ async def test_websocket_add_remove_and_ignored_frames(load_fixture) -> None:
 
 
 async def test_websocket_alarm_start_end_and_unsubscribe(load_fixture) -> None:
+    """Verify websocket alarm start end and unsubscribe."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     events = json.loads(load_fixture("websocket_alarm_events.json"))
     client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
@@ -414,6 +482,7 @@ async def test_websocket_alarm_start_end_and_unsubscribe(load_fixture) -> None:
 
 
 async def test_alarm_sources_are_aggregated_before_emitting_end(load_fixture) -> None:
+    """Verify alarm sources are aggregated before emitting end."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     events = json.loads(load_fixture("websocket_alarm_events.json"))
     client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
@@ -461,6 +530,7 @@ async def test_alarm_sources_are_aggregated_before_emitting_end(load_fixture) ->
 async def test_multiple_event_ids_keep_metric_active_until_all_end(
     load_fixture,
 ) -> None:
+    """Verify multiple event ids keep metric active until all end."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     events = json.loads(load_fixture("websocket_alarm_events.json"))
     client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
@@ -493,6 +563,7 @@ async def test_multiple_event_ids_keep_metric_active_until_all_end(
 
 
 def test_removed_device_alarm_bookkeeping_is_isolated() -> None:
+    """Verify removed device alarm bookkeeping is isolated."""
     client = _client(FakeSession(FakeResponse(), FakeResponse()))
     removed_key = ("removed-device", "co2")
     retained_key = ("retained-device", "vape")
@@ -528,6 +599,7 @@ def test_removed_device_alarm_bookkeeping_is_isolated() -> None:
 
 
 async def test_websocket_vape_and_alarm_edge_cases(load_fixture) -> None:
+    """Verify websocket vape and alarm edge cases."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     events = json.loads(load_fixture("websocket_alarm_events.json"))
     client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
@@ -564,7 +636,11 @@ async def test_websocket_vape_and_alarm_edge_cases(load_fixture) -> None:
         ),
     )
     for action, data in ignored:
-        client._process_websocket_payload(_frame(action) + _frame(data))
+        if data.get("type") == "sensorExtremeValues":
+            with pytest.raises(ProtectProtocolError):
+                client._process_websocket_payload(_frame(action) + _frame(data))
+        else:
+            client._process_websocket_payload(_frame(action) + _frame(data))
     assert callback.call_count == 1
 
 
@@ -573,6 +649,7 @@ async def test_websocket_vape_and_alarm_edge_cases(load_fixture) -> None:
     [("12.5", 12.5), ("invalid", None), (True, None), (None, None)],
 )
 def test_alarm_details_value_normalization(raw_value, expected) -> None:
+    """Verify alarm details value normalization."""
     assert PrivateProtectClient._alarm_details(
         {
             "type": "sensorExtremeValues",
@@ -586,6 +663,7 @@ def test_alarm_details_value_normalization(raw_value, expected) -> None:
 
 
 def test_alarm_details_rejects_missing_metadata() -> None:
+    """Verify alarm details rejects missing metadata."""
     assert PrivateProtectClient._alarm_details({"type": "sensorExtremeValues"}) == (
         None,
         None,
@@ -594,6 +672,7 @@ def test_alarm_details_rejects_missing_metadata() -> None:
 
 
 async def test_start_and_close_background_task() -> None:
+    """Verify start and close background task."""
     client = _client(FakeSession(FakeResponse(), FakeResponse()))
     blocker = asyncio.Event()
     client._websocket_loop = AsyncMock(side_effect=blocker.wait)
@@ -605,10 +684,12 @@ async def test_start_and_close_background_task() -> None:
 
 
 async def test_websocket_loop_recovers_from_connection_error() -> None:
+    """Verify websocket loop recovers from connection error."""
     client = _client(FakeSession(FakeResponse(), FakeResponse()))
     client._websocket_once = AsyncMock(side_effect=ClientConnectionError())
 
     async def stop_after_backoff(_delay):
+        """End the reconnect loop at its first backoff without actually sleeping."""
         client._closing = True
 
     with patch(
@@ -620,10 +701,12 @@ async def test_websocket_loop_recovers_from_connection_error() -> None:
 
 
 async def test_websocket_loop_resets_backoff_after_clean_disconnect() -> None:
+    """Verify websocket loop resets backoff after clean disconnect."""
     client = _client(FakeSession(FakeResponse(), FakeResponse()))
     client._websocket_once = AsyncMock()
 
     async def stop_after_backoff(delay):
+        """Check the reset one-second delay, then stop the loop without sleeping."""
         assert delay == 1
         client._closing = True
 
@@ -636,12 +719,14 @@ async def test_websocket_loop_resets_backoff_after_clean_disconnect() -> None:
 
 
 async def test_websocket_loop_stops_after_auth_rejection() -> None:
+    """Verify websocket loop stops after auth rejection."""
     client = _client(FakeSession(FakeResponse(), FakeResponse()))
     client._headers["Cookie"] = "expired"
     client._websocket_once = AsyncMock(side_effect=ProtectInvalidAuth())
     client._async_authenticate = AsyncMock(side_effect=ProtectCannotConnect())
 
     async def stop_after_backoff(_delay):
+        """Stop the loop defensively if its forbidden post-auth backoff is reached."""
         client._closing = True
 
     with patch(
@@ -656,6 +741,7 @@ async def test_websocket_loop_stops_after_auth_rejection() -> None:
 
 
 async def test_stream_auth_failure_notifies_owner_once_and_blocks_later_logins():
+    """Verify stream auth failure notifies owner once and blocks later logins."""
     session = FakeSession(FakeResponse(status=401), FakeResponse())
     client = _client(session)
     callback = MagicMock()
@@ -673,6 +759,7 @@ async def test_stream_auth_failure_notifies_owner_once_and_blocks_later_logins()
 
 
 async def test_websocket_authenticates_and_uses_last_update_id(load_fixture) -> None:
+    """Verify websocket authenticates and uses last update id."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     websocket = FakeWebsocket([])
     session = FakeSession(
@@ -692,21 +779,24 @@ async def test_websocket_authenticates_and_uses_last_update_id(load_fixture) -> 
 
 @pytest.mark.parametrize("status", [401, 403])
 async def test_websocket_maps_auth_handshake_error(status) -> None:
+    """Verify websocket maps auth handshake error."""
     error = WSServerHandshakeError(
         MagicMock(real_url="https://protect.local"),
         (),
         status=status,
         message="unauthorized",
     )
-    session = FakeSession(FakeResponse(), FakeResponse(), error)
+    session = FakeSession(FakeResponse(), FakeResponse(status=401), error)
     client = _client(session)
     client._headers["Cookie"] = "expired"
 
-    with pytest.raises(ProtectInvalidAuth):
+    expected = ProtectInvalidAuth if status == 401 else ProtectStreamPermissionDenied
+    with pytest.raises(expected):
         await client._websocket_once()
 
 
 async def test_websocket_preserves_non_auth_handshake_error() -> None:
+    """Verify websocket preserves non auth handshake error."""
     error = WSServerHandshakeError(
         MagicMock(real_url="https://protect.local"),
         (),
@@ -722,6 +812,7 @@ async def test_websocket_preserves_non_auth_handshake_error() -> None:
 
 
 async def test_websocket_loop_propagates_cancellation() -> None:
+    """Verify websocket loop propagates cancellation."""
     client = _client(FakeSession(FakeResponse(), FakeResponse()))
     client._websocket_once = AsyncMock(side_effect=asyncio.CancelledError())
 
@@ -730,6 +821,7 @@ async def test_websocket_loop_propagates_cancellation() -> None:
 
 
 def test_rebuild_before_initial_snapshot_is_safe() -> None:
+    """Verify rebuild before initial snapshot is safe."""
     client = _client(FakeSession(FakeResponse(), FakeResponse()))
     client._rebuild_snapshot("ignored")
     assert client.snapshot is None
@@ -737,6 +829,7 @@ def test_rebuild_before_initial_snapshot_is_safe() -> None:
 
 @pytest.mark.parametrize("status", [401, 403])
 async def test_expired_bootstrap_session_renews_without_reauth(status, load_fixture):
+    """Verify expired bootstrap session renews without reauth."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     session = FakeSession(
         FakeResponse(headers=[("Set-Cookie", "SESSION=synthetic-renewed")]),
@@ -758,6 +851,7 @@ async def test_expired_bootstrap_session_renews_without_reauth(status, load_fixt
 
 @pytest.mark.parametrize("status", [401, 403])
 async def test_rejected_renewed_bootstrap_session_stops_after_one_retry(status):
+    """Verify rejected renewed bootstrap session stops after one retry."""
     session = FakeSession(
         FakeResponse(headers=[("Set-Cookie", "SESSION=synthetic-renewed")]),
         FakeResponse(status=status),
@@ -783,6 +877,7 @@ async def test_rejected_renewed_bootstrap_session_stops_after_one_retry(status):
     ],
 )
 async def test_failed_session_renewal_keeps_correct_error(response, error):
+    """Verify failed session renewal keeps correct error."""
     session = FakeSession(response, FakeResponse(status=401))
     client = _client(session)
     client._headers["Cookie"] = "synthetic-expired"
@@ -795,14 +890,17 @@ async def test_failed_session_renewal_keeps_correct_error(response, error):
     assert client._headers == {}
 
 
-@pytest.mark.parametrize("status", [401, 403])
+@pytest.mark.parametrize("status", [401])
 async def test_expired_patch_session_renews_and_applies_update_once(
     status, load_fixture
 ):
+    """Verify expired patch session renews and applies update once."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    confirmed = json.loads(json.dumps(payload))
+    confirmed["sensors"][0]["airQualitySettings"]["ringLedBrightness"] = 42
     session = FakeSession(
         FakeResponse(headers=[("Set-Cookie", "SESSION=synthetic-renewed")]),
-        FakeResponse(payload=payload),
+        [FakeResponse(payload=payload), FakeResponse(payload=confirmed)],
         patch=[FakeResponse(status=status), FakeResponse()],
     )
     client = _client(session)
@@ -823,6 +921,7 @@ async def test_expired_patch_session_renews_and_applies_update_once(
 
 
 async def test_patch_retry_failure_does_not_change_local_state(load_fixture):
+    """Verify patch retry failure does not change local state."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     session = FakeSession(
         FakeResponse(headers=[("Set-Cookie", "SESSION=synthetic-renewed")]),
@@ -835,19 +934,20 @@ async def test_patch_retry_failure_does_not_change_local_state(load_fixture):
     callback = MagicMock()
     client.set_update_callback(callback)
 
-    with pytest.raises(ProtectInvalidAuth):
+    with pytest.raises(ProtectPermissionDenied):
         await client.async_update_device(
             "anonymous-air-quality-id",
             {"airQualitySettings": {"ringLedBrightness": 42}},
         )
 
-    assert len(session.patch_calls) == 2
+    assert len(session.patch_calls) == 1
     assert client.snapshot is previous
     callback.assert_not_called()
 
 
-@pytest.mark.parametrize("status", [401, 403])
+@pytest.mark.parametrize("status", [401])
 async def test_expired_websocket_session_renews_and_reconnects(status):
+    """Verify expired websocket session renews and reconnects."""
     rejected = WSServerHandshakeError(MagicMock(), (), status=status)
     session = FakeSession(
         FakeResponse(headers=[("Set-Cookie", "SESSION=synthetic-renewed")]),
@@ -865,12 +965,16 @@ async def test_expired_websocket_session_renews_and_reconnects(status):
 
 
 async def test_concurrent_expired_requests_share_one_session_renewal(load_fixture):
+    """Verify concurrent expired requests share one session renewal."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     both_rejected = asyncio.Event()
     rejected_count = 0
 
     class ConcurrentRejection(FakeResponse):
+        """Hold both rejected responses until their contexts have been entered."""
+
         async def __aenter__(self):
+            """Release both 401 responses together to exercise shared renewal."""
             nonlocal rejected_count
             rejected_count += 1
             if rejected_count == 2:
@@ -896,10 +1000,12 @@ async def test_concurrent_expired_requests_share_one_session_renewal(load_fixtur
 
     assert all(snapshot.devices for snapshot in snapshots)
     assert len(session.post_calls) == 1
-    assert len(session.get_calls) == 4
+    # A late rejected request reuses the newer confirmed result without retrying.
+    assert len(session.get_calls) == 3
 
 
 async def test_stale_request_cannot_clear_a_newer_session():
+    """Verify stale request cannot clear a newer session."""
     client = _client(FakeSession(FakeResponse(), FakeResponse()))
     client._headers["Cookie"] = "synthetic-current"
     client._auth_generation = 2
@@ -909,10 +1015,12 @@ async def test_stale_request_cannot_clear_a_newer_session():
 
 @pytest.mark.parametrize("error", [ProtectCannotConnect(), TimeoutError()])
 async def test_websocket_loop_survives_failed_login_and_retries(error):
+    """Verify websocket loop survives failed login and retries."""
     client = _client(FakeSession(FakeResponse(), FakeResponse()))
     client._websocket_once = AsyncMock(side_effect=[error, None])
 
     async def backoff(delay):
+        """Stop after the second stream attempt while omitting the real retry delay."""
         if client._websocket_once.await_count == 2:
             client._closing = True
 
@@ -927,6 +1035,7 @@ async def test_websocket_loop_survives_failed_login_and_retries(error):
 async def test_coordinator_refresh_recovers_expiry_while_push_still_works(
     hass, load_fixture
 ):
+    """Verify coordinator refresh recovers expiry while push still works."""
     from custom_components.unifi_air_quality.coordinator import (
         UnifiAirQualityCoordinator,
     )
@@ -965,6 +1074,7 @@ async def test_coordinator_refresh_recovers_expiry_while_push_still_works(
 
 
 async def test_nox_push_and_event_frames_merge_and_end_without_duplicates(load_fixture):
+    """Verify nox push and event frames merge and end without duplicates."""
     payload = json.loads(load_fixture("bootstrap_nox.json"))
     session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
     client = _client(session)

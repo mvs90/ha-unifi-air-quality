@@ -197,6 +197,8 @@ class _BootstrapPushes:
     """Fields confirmed by the stream while one HTTP bootstrap is in flight."""
 
     sensor_fields: dict[str, set[_FieldPath]] = field(default_factory=dict)
+    # A sensor status is newer evidence only if its status field was pushed.
+    sensor_statuses: set[_AlarmKey] = field(default_factory=set)
     event_alarms: set[_AlarmKey] = field(default_factory=set)
     cursor: str | None = None
 
@@ -856,17 +858,25 @@ class PrivateProtectClient:
             reading = readings.get(metric)
             if reading is None:
                 reading = readings.get(MEASUREMENT_ALIASES.get(metric))
-            if isinstance(reading, dict):
-                # An older bootstrap status must not undo a recent event transition.
-                current = self._raw_devices.get(device_id, {})
-                source_readings = current.get("airQuality", {})
-                recent = source_readings.get(metric)
-                if recent is None:
-                    recent = source_readings.get(MEASUREMENT_ALIASES.get(metric))
-                if isinstance(recent, Mapping) and "status" in recent:
-                    reading["status"] = recent["status"]
-                else:
-                    reading.pop("status", None)
+            if (
+                not isinstance(reading, dict)
+                or (device_id, metric) in pushes.sensor_statuses
+            ):
+                # A status actually pushed during the request was already merged.
+                continue
+            # An event start can outrun an older REST all-clear. Conversely, an
+            # event end can outrun an old high REST status. Without a concurrent
+            # sensor-status push, neither contradictory classification is proof.
+            event_active = any(
+                self._alarm_event_devices.get(event_id) == device_id
+                and alarm.metric == metric
+                for event_id, alarm in self._active_alarm_events.items()
+            )
+            status = reading.get("status")
+            if event_active or (
+                isinstance(status, str) and status.casefold() in _ALARM_STATUSES
+            ):
+                reading.pop("status", None)
 
         return payload | {
             "sensors": list(devices.values()),
@@ -1114,11 +1124,27 @@ class PrivateProtectClient:
                 if operation == "update" and previous is not None
                 else {()}
             )
+            readings = data.get("airQuality") if operation != "remove" else None
+            confirmed_statuses = (
+                {
+                    (device_id, _canonical_metric(metric))
+                    for metric, reading in readings.items()
+                    if metric in _MEASUREMENT_KEYS
+                    and isinstance(reading, Mapping)
+                    and isinstance(reading.get("status"), str)
+                }
+                if isinstance(readings, Mapping)
+                else set()
+            )
             for pending in self._pending_bootstraps.values():
                 pending.sensor_fields.setdefault(device_id, set()).update(fields)
+                pending.sensor_statuses.update(confirmed_statuses)
                 if operation == "remove":
                     pending.event_alarms = {
                         key for key in pending.event_alarms if key[0] != device_id
+                    }
+                    pending.sensor_statuses = {
+                        key for key in pending.sensor_statuses if key[0] != device_id
                     }
                 if isinstance(cursor, str):
                     pending.cursor = cursor
@@ -1156,8 +1182,15 @@ class PrivateProtectClient:
         device_id = current.get("device")
         if not isinstance(device_id, str):
             device_id = self._alarm_event_devices.get(event_id)
+        if not isinstance(device_id, str):
+            raise ProtectProtocolError("Alarm event is missing device or metric")
+        # Protect also publishes UP-Sense alarm events. Ignore other models
+        # before checking the stricter UP-AirQuality measurement vocabulary.
+        sensor = self._raw_devices.get(device_id)
+        if sensor is None or not _is_air_quality_sensor(sensor):
+            return
         metric, status, value = self._alarm_details(current)
-        if not isinstance(device_id, str) or metric is None:
+        if metric is None:
             raise ProtectProtocolError("Alarm event is missing device or metric")
 
         if metric not in _MEASUREMENT_KEYS or (
@@ -1178,6 +1211,10 @@ class PrivateProtectClient:
         key = (device_id, metric)
         cursor = action.get("newUpdateId")
         is_ended = operation == "remove" or end is not None
+        # A never-seen update is not a new alarm start. A known event retired
+        # by a safety bootstrap may, however, be restored by live evidence.
+        if operation == "update" and not is_ended and cached is None:
+            return
         alarm = ProtectAlarm(metric=metric, status=status, value=value)
         if is_ended:
             alarm = self._active_alarm_events.pop(event_id, None) or alarm
@@ -1195,8 +1232,8 @@ class PrivateProtectClient:
                 },
             }
             self._alarm_event_devices[event_id] = device_id
-            if operation == "update":
-                return
+            # A confirmed non-ending update also revives retired sources and
+            # refreshes their liveness without publishing another alarm start.
             self._active_alarm_events[event_id] = alarm
 
         for pending in self._pending_bootstraps.values():
@@ -1236,10 +1273,12 @@ class PrivateProtectClient:
         if is_ended and key in self._uncertain_alarm_metrics and known_event:
             # The final known end confirms the previously unknown aggregate.
             self._alarm_states.setdefault(key, alarm)
+        self._alarm_verified_at[key] = now
+        # Keep uncertainty until transition reconciliation so revival of an
+        # already-notified alarm never emits a duplicate "started" event.
+        self._refresh_alarm_state(device_id, alarm.metric, alarm)
         if not unresolved and key not in self._unresolvable_alarm_metrics:
             self._uncertain_alarm_metrics.discard(key)
-        self._alarm_verified_at[key] = now
-        self._refresh_alarm_state(device_id, alarm.metric, alarm)
         self._rebuild_snapshot(cursor)
 
     def _has_retired_alarm_source(self, key: _AlarmKey) -> bool:

@@ -7,11 +7,10 @@ available, open an issue asking only for a private security contact; include no
 vulnerability details. See [GitHub's private reporting guide](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately). Do not open a public issue containing credentials or
 unredacted diagnostics.
 
-Security fixes target the latest accepted **pinned commit** of version
-0.6.0; unmerged candidates and moving-branch downloads are not reproducible
-supported builds. Record the full commit SHA alongside the installed manifest
-version, as described in [the install/rollback policy](docs/install-upgrade-rollback.md).
-No published release is claimed until an immutable release is created.
+For a [published release](https://github.com/mvs90/ha-unifi-air-quality/releases),
+report the release tag and installed manifest version. For an unreleased build,
+also record the exact commit; a moving branch name does not identify the code.
+See [the install/rollback guide](docs/install-upgrade-rollback.md).
 This integration is intended for local network access to Protect and must not
 be used to expose a console publicly.
 

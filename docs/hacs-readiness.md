@@ -3,14 +3,14 @@
 This retained report concerns **mvs90/ha-unifi-air-quality**: the review of
 upstream `0.5.3` on **2026-10-28**, followed by the `0.5.4` authentication changes.
 Its test counts, runtime versions, repository observations and hardware checks
-are historical. They are not new tests or catalog approval for this fork.
+are historical, not new tests of version 0.6.0.
 
 For current work, use the [user installation guide](../README.md#install-the-integration),
 [installation and recovery policy](install-upgrade-rollback.md),
 [contribution guide](../CONTRIBUTING.md) and
-[required check policy](maintainer-ruleset.md). The fork's declared minimum and
+[CI workflows](../.github/workflows/). The 0.6.0 minimum and
 CI baseline is Home Assistant 2026.10.4; the old preview result below is not a
-claim that the current fork has been tested against every later HA release.
+claim that 0.6.0 has been tested against every later HA release.
 
 ## Upstream authentication follow-up: 0.5.4
 
@@ -33,8 +33,7 @@ The upstream report recorded a public repository with a description, topics,
 issues enabled, an identifiable MIT license and published non-prerelease GitHub
 releases. It contained one integration under
 `custom_components/unifi_air_quality`, a root `hacs.json`, and installation and
-removal instructions. These release observations concern upstream, not the
-fork's pinned-commit distribution.
+removal instructions.
 
 At that review, `unifi_air_quality` was checked against Home Assistant Core's
 `dev` integration list without a domain conflict. The proposed submitter was
@@ -59,15 +58,14 @@ preserving the stored user name and entity ID.
 The upstream preview tests used the official `pytest-home-assistant` package
 from Core commit `4be5ba96f41e0f4052899e0f6e953c5ce2143e3c`. Test tools were installed
 separately, retaining priority for the image's runtime packages. These results
-do not extend the fork's support policy to older HA releases; the fork withdrew
-2026.8.x support after its dependency review.
+do not extend 0.6.0 support to older HA releases; 0.6.0 requires 2026.10.4.
 
 The original report also recorded read-only checks against Protect in both
 images: bootstrap retrieval, WebSocket connection and sensor pushes. A request
 guard allowed reads and session login, with no device-setting writes or induced
 alarms. Credentials, addresses, identifiers and raw live data were not retained
 in the report or fixtures. These records do not describe hardware checks
-against the current fork.
+against 0.6.0.
 
 ## Branding and validator history
 
@@ -81,12 +79,10 @@ validator and should not be treated as a permanent manifest restriction.
 
 ## Catalog submission
 
-The original report prepared submission of `mvs90/ha-unifi-air-quality` to the
-HACS default catalog. It did not constitute catalog acceptance. Submitting this
-fork is a separate action under its own repository name and requires a fresh
-review of the current official requirements, release and validator results.
-For ordinary installation, follow the custom-repository instructions in the
-user guide; this report is not an installation prerequisite.
+The project was accepted into the HACS default catalog in
+[hacs/default#12870](https://github.com/hacs/default/pull/12870).
+Search for **UniFi Protect Air Quality** by **mvs90**; adding a custom repository
+is only a fallback. See the [installation guide](../README.md#install-the-integration).
 
 ## References
 

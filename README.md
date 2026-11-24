@@ -61,48 +61,33 @@ used in that form.
 
 ## Install the integration
 
-Choose one method for your Home Assistant version: **Home Assistant Marketplace**
-(2026.11 or newer), **HACS** (2026.10.4–2026.10.x), or a **manual installation**
-without a package manager.
+Search the catalog for **UniFi Protect Air Quality** by **mvs90**. Use HACS
+on Home Assistant 2026.10.4–2026.10.x or the built-in Marketplace on 2026.11
+and newer. A manual installation is also available.
 
-### Option 1: Home Assistant Marketplace
+### HACS (Home Assistant 2026.10.4–2026.10.x)
 
-On **Home Assistant 2026.11 or newer**, use the built-in Marketplace if you
-prefer to manage downloads and updates in the Home Assistant interface.
+1. Open **HACS** and search for **UniFi Protect Air Quality**.
+2. Open the result by **mvs90**, select **Download** and confirm.
+3. Restart Home Assistant and follow the connection setup below.
 
-1. Open **Settings → Marketplace**.
-2. Select **Add from link** and enter:
+**Only if the search returns no result:** In HACS, open **⋮ → Custom
+repositories**, add `https://github.com/mvs90/ha-unifi-air-quality` as an
+**Integration**, then repeat the steps above. See the
+[HACS fallback instructions](https://www.hacs.xyz/docs/faq/custom_repositories/).
 
-   ```text
-   https://github.com/mvs90/ha-unifi-air-quality
-   ```
+### Marketplace (Home Assistant 2026.11 and newer)
 
-3. Connect GitHub when prompted, then select **Add**. If asked for a content
-   type, choose **Integration**.
-4. Open **UniFi Protect Air Quality**, select **Install**, and confirm.
-5. Follow the setup prompt. If Home Assistant requests a restart, complete it
-   first. You can also start setup manually as described below.
+1. Open **Settings → Marketplace** and search for **UniFi Protect Air Quality**.
+2. Open the result by **mvs90**, select **Install**, and confirm.
+3. Follow the setup prompt and restart Home Assistant if requested.
 
-See the official [Marketplace guide](https://www.home-assistant.io/integrations/marketplace/#custom-repositories)
-for the GitHub connection and download controls.
+If the project is not listed, select **Add from link** and enter
+`https://github.com/mvs90/ha-unifi-air-quality`. Connect GitHub if prompted,
+choose **Integration**, and continue with installation. See the
+[Marketplace guide](https://www.home-assistant.io/integrations/marketplace/#custom-repositories).
 
-### Option 2: HACS
-
-On **Home Assistant 2026.10.4–2026.10.x**, you can use HACS if it is already
-installed.
-
-1. Open **HACS**.
-2. Select **⋮ → Custom repositories**.
-3. Enter `https://github.com/mvs90/ha-unifi-air-quality`, select
-   **Integration** as the type, and select **Add**.
-4. Find and open **UniFi Protect Air Quality** from **mvs90**.
-5. Select **Download** and confirm.
-6. Restart Home Assistant and continue with the connection setup below.
-
-See [HACS custom repositories](https://www.hacs.xyz/docs/faq/custom_repositories/)
-if the repository is not listed.
-
-### Option 3: Download and copy the integration
+### Manual installation from a release
 
 Use this option for a fixed, reproducible installation package. HACS and a
 GitHub account are not required. Keep the ZIP with its original filename for
@@ -117,8 +102,11 @@ First, make sure you can copy folders into Home Assistant:
   using your host's file manager. Home Assistant apps are not available with
   Container.
 
-1. **[Download the installation ZIP](https://github.com/mvs90/ha-unifi-air-quality/archive/cd24231406d6d65798f48400029ab4dc01c30b9e.zip)** and extract it.
-   Keep the ZIP with its original filename alongside your backup.
+1. Open the project's **[GitHub releases](https://github.com/mvs90/ha-unifi-air-quality/releases)**,
+   choose a published version compatible with your Home Assistant version, and
+   download **Source code (zip)** for that tag. Extract it and keep the original
+   ZIP and release tag alongside your backup. The version on `main` may be
+   newer than the latest published release.
 2. Open your **Home Assistant configuration directory**, the folder containing
    `configuration.yaml`. On Home Assistant OS this is normally `/config`.
    With Home Assistant Container, use the host folder mounted at `/config`.
@@ -144,12 +132,10 @@ See the official
 [configuration-directory guide](https://www.home-assistant.io/docs/configuration/)
 if you need help locating that folder.
 
-**Use only one installation method for this integration.** The fixed ZIP in
-Option 3 is covered by the [supported installation policy](docs/install-upgrade-rollback.md#supported-distribution-and-identity).
-Marketplace and HACS download moving repository contents; those unpinned
-packages are outside that support policy. These are optional download methods
-for users who choose to manage that limitation. Avoid having a package manager
-overwrite a manually maintained copy.
+**Use only one installation method for this integration.** Do not let a package
+manager overwrite a manually maintained copy. See the
+[installation and recovery guide](docs/install-upgrade-rollback.md#supported-distribution-and-identity)
+if you need to reproduce an exact build.
 
 ## Connect Home Assistant to Protect
 
@@ -332,8 +318,8 @@ entry for that console.
    - **Marketplace:** Install the offered update under **Settings → Updates**.
    - **HACS:** Open this repository in HACS and install its offered update.
      **Redownload** reinstalls the currently available package.
-   - **Manual:** Download the ZIP linked in the repository's
-     [current README](https://github.com/mvs90/ha-unifi-air-quality/blob/main/README.md)
+   - **Manual:** Download the ZIP for the desired
+     [published release](https://github.com/mvs90/ha-unifi-air-quality/releases)
      and extract it outside the active component folder. Under **Settings →
      Devices & services**, disable **every** UniFi Protect Air Quality console
      entry using **⋮ → Disable**. If Home Assistant requests a restart, complete
@@ -410,6 +396,18 @@ Assistant. This permanently removes the integration setup.
 - [Understand diagnostics and data freshness](docs/diagnostic-health.md)
 - [Device discovery, removal and re-adoption](docs/device-lifecycle.md)
 - [Documentation index](docs/README.md)
+
+## Acknowledgements
+
+This integration builds on [Tommo-101's UPAQ-MQTT](https://github.com/Tommo-101/UPAQ-MQTT).
+Thank you for sharing how to access UP-AirQuality data through Protect. That
+work helped make this direct Home Assistant integration possible.
+
+## Support this project
+
+If this integration is useful to you, you can support its development through
+[GitHub Sponsors](https://github.com/sponsors/mvs90) or
+[PayPal](https://www.paypal.me/mvs90). Thank you!
 
 ## License
 

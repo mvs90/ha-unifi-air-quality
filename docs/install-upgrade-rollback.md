@@ -6,33 +6,18 @@ while retaining an existing Home Assistant setup.
 
 ## Supported distribution and identity
 
-This integration identifies this change set as **0.6.0** in `manifest.json`,
-`pyproject.toml` and `CHANGELOG.md`. Its supported distribution is an **immutable
-full commit**, accepted into `mvs90/ha-unifi-air-quality` main after the
-Tests, Security, HACS and Hassfest jobs and independent review pass. The accepted
-PR/merge record identifies the full 40-character commit. Fixes target the latest
-accepted pinned commit; earlier commits must be upgraded to receive fixes.
-Feature branches and unmerged candidates are not supported deployments.
+For a normal installation, choose a [published release](https://github.com/mvs90/ha-unifi-air-quality/releases)
+of **mvs90/ha-unifi-air-quality** through the catalog or download its tagged
+source archive. Record the release tag and Home Assistant version. Keep the
+archive or a backup of the installed files so you can restore that exact build.
+An unreleased version in the manifest on `main` is not a published update.
 
-A version number alone does not identify a commit. Record both `0.6.0` and the
-full accepted SHA, plus the Home Assistant version, in the installation notes.
-The installed component's `manifest.json` identifies the repository through its
-repository/issue links and reports `0.6.0`. The fixed ZIP linked from the README
-uses the full accepted commit in its download URL and original archive filename.
-Keep that ZIP with its original filename as the exact build record; users do not
-need Git or a manually created marker for this installation path. Include the
-archive filename and installed version in bug reports. The `BUILD_COMMIT` marker
-described below is an alternative for staged deployments that do not retain the
-archive. It contains the same public commit ID and no credentials.
+For development or pre-release validation, select the exact full commit of a
+reviewed, merged change and record it alongside the manifest version. Do not
+use a moving branch or an old fork archive as a reproducible build. The
+optional staging procedure below records the commit in a `BUILD_COMMIT` file.
 
-No published GitHub Release or release tag is claimed by this policy. Until a
-maintainer publishes an immutable release from an accepted commit, **HACS tracks
-the moving default branch** for a repository without releases. Use the pinned
-manual procedure for reproducible supported deployment. A future `v0.6.0`
-release must point to one accepted commit and never be retargeted; its release
-notes must link the final checks and upgrade/rollback evidence.
-
-Home Assistant **2026.10.4** is the minimum and the tested/audited baseline.
+For **0.6.0**, Home Assistant **2026.10.4** is the minimum and the tested/audited baseline.
 Upgrade older HA installations first. That HA upgrade is a separate operation
 with its own full backup; this component's rollback cannot downgrade HA itself.
 
@@ -109,10 +94,9 @@ removes the integration entries, devices and entities. It is not equivalent to
 the HACS package-only removal described above. Keep using Marketplace's update
 action for a Marketplace-managed copy.
 
-When immutable releases become available, HACS can manage this
-repository. Select a concrete release in HACS, record its SHA/version, and use
-its documented download/restart flow. Moving-branch HACS downloads do not provide
-the commit pin promised by the manual policy above.
+HACS users can keep the existing installation under HACS management. Select
+a published release, record its version, and use the normal download/restart
+flow. Switching to a manual build is optional.
 
 ## Rollback
 
@@ -164,7 +148,7 @@ stores between processes. It uses synthetic Protect data and a mocked Protect
 client, with test helpers providing isolated HA storage. It does not contact
 hardware or operate the HACS UI. HACS download/source selection is therefore documented but
 not claimed as an automated UI test. A maintainer should additionally verify
-source selection in a disposable HACS instance when publishing the first tagged
+source selection in a disposable HACS instance when publishing a new
 release. This distinction keeps the existing reproducible package/HA evidence
 separate from any future HACS release test.
 

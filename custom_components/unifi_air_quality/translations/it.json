@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "Solo nome host o indirizzo IP, senza https://.",
-          "verify_ssl": "Attiva solo se Home Assistant considera attendibile il certificato della console."
+          "verify_ssl": "Verifica l’identità della console (consigliato). Disabilitare la verifica consente l’intercettazione delle credenziali e delle misurazioni."
         }
       },
       "reauth_confirm": {
@@ -23,18 +23,34 @@
         "data": {
           "password": "Password"
         }
+      },
+      "reconfigure": {
+        "title": "Aggiorna la connessione a UniFi Protect",
+        "description": "Convalida il nuovo indirizzo o il certificato della stessa console. I dispositivi e i nomi esistenti verranno mantenuti.",
+        "data": {
+          "host": "Host",
+          "port": "Porta",
+          "verify_ssl": "Verifica il certificato TLS"
+        },
+        "data_description": {
+          "host": "Solo nome host o indirizzo IP, senza https://.",
+          "verify_ssl": "Verifica l’identità della console (consigliato). Disabilitare la verifica consente l’intercettazione delle credenziali e delle misurazioni."
+        }
       }
     },
     "error": {
       "cannot_connect": "Impossibile connettersi a UniFi Protect.",
       "invalid_auth": "Il nome utente o la password non sono validi.",
       "invalid_response": "Protect ha restituito una risposta non supportata.",
-      "unknown": "Errore imprevisto. Controlla i registri di Home Assistant."
+      "tls_error": "Il certificato TLS della console non è attendibile. Usa un certificato emesso da un’autorità di certificazione considerata attendibile da Home Assistant e un nome host corrispondente al certificato.",
+      "unknown": "Errore imprevisto. Controlla i registri di Home Assistant.",
+      "different_console": "Il nuovo indirizzo appartiene a una console Protect diversa. Nessuna modifica è stata salvata."
     },
     "abort": {
       "already_configured": "Questa console Protect è già configurata.",
       "reauth_successful": "La nuova autenticazione è riuscita.",
-      "unique_id_mismatch": "Le credenziali appartengono a una console Protect diversa."
+      "unique_id_mismatch": "Le credenziali appartengono a una console Protect diversa.",
+      "reconfigure_successful": "La connessione esistente a Protect è stata aggiornata."
     }
   },
   "entity": {

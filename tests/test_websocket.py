@@ -15,6 +15,7 @@ HEADER = struct.Struct("!bbbbi")
 
 
 def _frame(data: dict, *, compressed: bool = False) -> bytes:
+    """Encode one Protect JSON frame, optionally compressing its payload with zlib."""
     payload = json.dumps(data).encode()
     if compressed:
         payload = zlib.compress(payload)
@@ -22,6 +23,7 @@ def _frame(data: dict, *, compressed: bool = False) -> bytes:
 
 
 def test_decode_message() -> None:
+    """Decode an action frame paired with a compressed sensor-data frame."""
     action = {
         "action": "update",
         "modelKey": "sensor",
@@ -36,11 +38,13 @@ def test_decode_message() -> None:
 
 
 def test_decode_message_rejects_truncated_frame() -> None:
+    """Reject a message shorter than the binary frame header."""
     with pytest.raises(WebsocketDecodeError):
         decode_message(b"invalid")
 
 
 def test_decode_message_rejects_trailing_data() -> None:
+    """Reject bytes remaining after the required action and data frames."""
     with pytest.raises(WebsocketDecodeError):
         decode_message(_frame({}) + _frame({}) + b"extra")
 
@@ -56,5 +60,6 @@ def test_decode_message_rejects_trailing_data() -> None:
     ],
 )
 def test_decode_message_rejects_invalid_action_frame(payload: bytes) -> None:
+    """Reject truncated, non-JSON, invalid-compressed or non-object frame data."""
     with pytest.raises(WebsocketDecodeError):
         decode_message(payload)

@@ -1,4 +1,4 @@
-"""Sensor entities for UniFi Protect Air Quality."""
+"""Measurement entities with independent freshness and Protect classifications."""
 
 from __future__ import annotations
 
@@ -21,8 +21,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import UnifiAirQualityConfigEntry
+from .const import MEASUREMENT_ALIASES
 from .coordinator import UnifiAirQualityCoordinator
-from .entity import UnifiAirQualityEntity
+from .entity import UnifiAirQualityEntity, async_setup_dynamic_entities
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -131,10 +132,13 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensors for every discovered UP-AirQuality device."""
     coordinator = entry.runtime_data.coordinator
-    async_add_entities(
-        UnifiAirQualitySensor(coordinator, device.id, description)
-        for device in coordinator.data.devices
-        for description in SENSOR_DESCRIPTIONS
+    async_setup_dynamic_entities(
+        entry,
+        async_add_entities,
+        lambda device_id: (
+            UnifiAirQualitySensor(coordinator, device_id, description)
+            for description in SENSOR_DESCRIPTIONS
+        ),
     )
 
 
@@ -149,11 +153,21 @@ class UnifiAirQualitySensor(UnifiAirQualityEntity, SensorEntity):
         device_id: str,
         description: UnifiAirQualitySensorEntityDescription,
     ) -> None:
+        """Bind a measurement description to this device's stable sensor ID."""
         super().__init__(coordinator, device_id, description.key)
         self.entity_description = description
 
     @property
+    def available(self) -> bool:
+        """Require a recent value for this metric, not just activity on the device."""
+        return super().available and self.coordinator.client.is_measurement_fresh(
+            self._device_id, self.entity_description.payload_key
+        )
+
+    @property
     def native_value(self) -> int | float | None:
+        """Return the cached numeric reading, excluding booleans and absent values."""
+        # Check wire types before converting to the Home Assistant representation.
         measurement = self._measurement
         value = measurement.get("value") if measurement else None
         if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -162,15 +176,24 @@ class UnifiAirQualitySensor(UnifiAirQualityEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, str] | None:
+        """Expose the measurement's Protect status string when supplied."""
         measurement = self._measurement
         status = measurement.get("status") if measurement else None
         return {"protect_status": status} if isinstance(status, str) else None
 
     @property
     def _measurement(self) -> dict[str, Any] | None:
+        """Read the metric from the scalar or structured protocol variant."""
+        # Keep scalar support while retaining classifications on structured readings.
         device = self.device
         air_quality = device.raw.get("airQuality") if device else None
         if not isinstance(air_quality, dict):
             return None
-        measurement = air_quality.get(self.entity_description.payload_key)
+        metric = self.entity_description.payload_key
+        measurement = air_quality.get(metric)
+        if metric not in air_quality and metric in MEASUREMENT_ALIASES:
+            measurement = air_quality.get(MEASUREMENT_ALIASES[metric])
+        if isinstance(measurement, (int, float)) and not isinstance(measurement, bool):
+            # The original wire variant sends scalar readings without a status.
+            return {"value": measurement}
         return measurement if isinstance(measurement, dict) else None

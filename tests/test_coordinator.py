@@ -17,11 +17,13 @@ from .ha_test_helpers import MockConfigEntry
 
 
 def _snapshot() -> ProtectSnapshot:
+    """Return an empty synthetic console inventory for poll/push comparisons."""
     return ProtectSnapshot("console", "Protect", "6.2", "update", ())
 
 
 async def test_coordinator_update_and_push(hass) -> None:
-    client = MagicMock()
+    """Accept snapshots from REST refreshes and the registered push callback."""
+    client = MagicMock(protocol_error=False, authentication_failed=False)
     client.async_get_snapshot = AsyncMock(return_value=_snapshot())
     coordinator = UnifiAirQualityCoordinator(hass, MockConfigEntry(), client)
 
@@ -32,7 +34,8 @@ async def test_coordinator_update_and_push(hass) -> None:
 
 
 async def test_coordinator_maps_errors(hass) -> None:
-    client = MagicMock()
+    """Map terminal auth and uncached network failures to Home Assistant errors."""
+    client = MagicMock(protocol_error=False, authentication_failed=False)
     coordinator = UnifiAirQualityCoordinator(hass, MockConfigEntry(), client)
     client.async_get_snapshot = AsyncMock(side_effect=ProtectInvalidAuth())
     with pytest.raises(ConfigEntryAuthFailed):
@@ -44,10 +47,11 @@ async def test_coordinator_maps_errors(hass) -> None:
 
 
 async def test_stream_auth_failure_starts_reauth(hass):
+    """Verify stream auth failure starts reauth."""
     from unittest.mock import patch
 
     entry = MockConfigEntry()
-    client = MagicMock()
+    client = MagicMock(protocol_error=False, authentication_failed=False)
     coordinator = UnifiAirQualityCoordinator(hass, entry, client)
     with patch.object(entry, "async_start_reauth") as reauth:
         coordinator._handle_auth_failure()

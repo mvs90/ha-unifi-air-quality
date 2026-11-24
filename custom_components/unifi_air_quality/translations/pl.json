@@ -14,7 +14,7 @@
         },
         "data_description": {
           "host": "Tylko nazwa hosta lub adres IP, bez https://.",
-          "verify_ssl": "Włącz tylko wtedy, gdy Home Assistant ufa certyfikatowi konsoli."
+          "verify_ssl": "Zweryfikuj tożsamość konsoli (zalecane). Wyłączenie weryfikacji umożliwia przechwycenie danych logowania i odczytów."
         }
       },
       "reauth_confirm": {
@@ -23,18 +23,34 @@
         "data": {
           "password": "Hasło"
         }
+      },
+      "reconfigure": {
+        "title": "Zaktualizuj połączenie z UniFi Protect",
+        "description": "Zweryfikuj nowy adres lub certyfikat tej samej konsoli. Istniejące urządzenia i nazwy zostaną zachowane.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "verify_ssl": "Weryfikuj certyfikat TLS"
+        },
+        "data_description": {
+          "host": "Tylko nazwa hosta lub adres IP, bez https://.",
+          "verify_ssl": "Zweryfikuj tożsamość konsoli (zalecane). Wyłączenie weryfikacji umożliwia przechwycenie danych logowania i odczytów."
+        }
       }
     },
     "error": {
       "cannot_connect": "Nie udało się połączyć z UniFi Protect.",
       "invalid_auth": "Nieprawidłowa nazwa użytkownika lub hasło.",
       "invalid_response": "Protect zwrócił nieobsługiwaną odpowiedź.",
-      "unknown": "Nieoczekiwany błąd. Sprawdź dzienniki Home Assistant."
+      "tls_error": "Certyfikat TLS konsoli nie jest zaufany. Użyj certyfikatu wystawionego przez urząd certyfikacji zaufany przez Home Assistant oraz nazwy hosta zgodnej z certyfikatem.",
+      "unknown": "Nieoczekiwany błąd. Sprawdź dzienniki Home Assistant.",
+      "different_console": "Nowy adres należy do innej konsoli Protect. Żadne zmiany nie zostały zapisane."
     },
     "abort": {
       "already_configured": "Ta konsola Protect jest już skonfigurowana.",
       "reauth_successful": "Ponowne uwierzytelnienie powiodło się.",
-      "unique_id_mismatch": "Dane logowania dotyczą innej konsoli Protect."
+      "unique_id_mismatch": "Dane logowania dotyczą innej konsoli Protect.",
+      "reconfigure_successful": "Istniejące połączenie z Protect zostało zaktualizowane."
     }
   },
   "entity": {

@@ -19,7 +19,8 @@ To remove a sensor permanently:
 2. In Home Assistant, open **Settings → Devices & services → UniFi Protect Air
    Quality**, then the sensor's device page and its **Delete** action. Leave the
    integration entry enabled and loaded so it can perform the verification.
-3. The integration fetches a new inventory and verifies the console identity
+3. The integration checks a fresh HTTP inventory without applying WebSocket
+   changes and verifies the console identity
    before allowing removal. If Protect cannot be reached, restore connectivity and
    retry. Disabling certificate verification is not a cleanup workaround.
 

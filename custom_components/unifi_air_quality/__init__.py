@@ -137,10 +137,9 @@ async def async_remove_config_entry_device(
     if not device_ids or runtime is None:
         return False
     try:
-        snapshot = await runtime.client.async_get_snapshot()
+        console_id, paired_ids = await runtime.client.async_read_pairing_inventory()
     except ProtectApiError:
         return False
-    if snapshot.console_id != entry.unique_id:
+    if console_id != entry.unique_id:
         return False
-    runtime.coordinator.async_set_updated_data(snapshot)
-    return device_ids.isdisjoint(device.id for device in snapshot.devices)
+    return device_ids.isdisjoint(paired_ids)

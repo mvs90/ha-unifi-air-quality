@@ -713,6 +713,18 @@ class PrivateProtectClient:
                 self._verified_at[device_id] = monotonic()
                 self._metric_verified_at[(device_id, metric)] = monotonic()
 
+    async def async_read_pairing_inventory(self) -> tuple[str, frozenset[str]]:
+        """Read validated HTTP-only pairing evidence without publishing it.
+
+        Include every reported sensor ID, even if its model is no longer
+        recognized. WebSocket overlays are unsuitable for registry deletion.
+        """
+        await self._async_authenticate()
+        payload = await self._async_read_bootstrap()
+        snapshot = snapshot_from_bootstrap(payload)
+        paired_ids = frozenset(sensor["id"] for sensor in payload["sensors"])
+        return snapshot.console_id, paired_ids
+
     async def async_get_snapshot(self) -> ProtectSnapshot:
         """Return a refreshed snapshot and notify callers of auth/protocol failure.
 

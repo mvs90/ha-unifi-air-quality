@@ -25,7 +25,7 @@ from custom_components.unifi_air_quality.number import (
 )
 
 from .ha_test_helpers import MockConfigEntry
-from .test_client import FakeResponse, FakeSession, _client
+from .test_client import FakeResponse, FakeSession, _client, _frame
 from .test_config_flow import USER_INPUT
 from .test_controls import _coordinator, _device
 
@@ -71,7 +71,9 @@ async def test_device_cleanup_refuses_wrong_entry_or_unidentified_device(
     unknown = registry.async_get_or_create(
         config_entry_id=entry.entry_id, identifiers={("other", "foreign")}
     )
-    with patch.object(entry.runtime_data.client, "async_get_snapshot") as fetch:
+    with patch.object(
+        entry.runtime_data.client, "async_read_pairing_inventory"
+    ) as fetch:
         assert not await async_remove_config_entry_device(hass, other, device)
         assert not await async_remove_config_entry_device(hass, entry, unknown)
         fetch.assert_not_called()
@@ -90,7 +92,7 @@ async def test_unknown_inventory_never_authorizes_cleanup(hass, load_fixture, fa
     registry = dr.async_get(hass)
     registry.async_update_device(device.id, name_by_user="Keep this room")
     with patch.object(
-        entry.runtime_data.client, "async_get_snapshot", side_effect=failure
+        entry.runtime_data.client, "async_read_pairing_inventory", side_effect=failure
     ):
         assert not await async_remove_config_entry_device(hass, entry, device)
     assert registry.async_get(device.id).name_by_user == "Keep this room"
@@ -106,6 +108,37 @@ async def test_different_console_cannot_authorize_absent_device(hass, load_fixtu
     session.get_response = FakeResponse(payload=changed)
     assert not await async_remove_config_entry_device(hass, entry, device)
     assert entry.runtime_data.coordinator.data.console_id == entry.unique_id
+
+
+async def test_remove_push_cannot_override_paired_http_inventory(hass, load_fixture):
+    """Keep registry metadata when a remove push races the HTTP read."""
+    entry, device, session, payload = await _runtime(hass, load_fixture)
+    client = entry.runtime_data.client
+    response = FakeResponse(payload=payload)
+
+    async def receive_inventory(**kwargs):
+        """Apply a synthetic remove push while the HTTP response is read."""
+        action = {
+            "action": "remove",
+            "modelKey": "sensor",
+            "id": payload["sensors"][0]["id"],
+        }
+        client._process_websocket_payload(_frame(action) + _frame({}))
+        assert not client.snapshot.devices
+        return payload
+
+    response.json = receive_inventory
+    session.get_response = response
+    assert not await async_remove_config_entry_device(hass, entry, device)
+    assert dr.async_get(hass).async_get(device.id) is device
+
+
+async def test_paired_sensor_with_unknown_model_is_not_removable(hass, load_fixture):
+    """An unrecognized record still proves that its sensor ID is paired."""
+    entry, device, session, payload = await _runtime(hass, load_fixture)
+    payload["sensors"] = [{"id": payload["sensors"][0]["id"], "type": "unknown"}]
+    session.get_response = FakeResponse(payload=payload)
+    assert not await async_remove_config_entry_device(hass, entry, device)
 
 
 async def test_deliberately_removed_device_is_rediscovered_on_all_platforms(

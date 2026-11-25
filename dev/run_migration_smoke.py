@@ -23,9 +23,11 @@ import sys
 import tarfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from zipfile import ZipFile
 
 # Public immutable upstream commit, verified against trusted Git ancestry.
 UPSTREAM_COMMIT = "f4692adaffc2310974efd42a2b3856a156396a8a"  # pragma: allowlist secret
+COMPONENT_DIRECTORY = "custom_components/unifi_air_quality"
 
 
 def run(
@@ -46,10 +48,35 @@ def run(
     return result.stdout
 
 
+def install_release_zip(path: Path, source: Path, target: Path) -> None:
+    """Check the ZIP against the checkout and unpack only expected files."""
+    expected = {
+        file.relative_to(source).as_posix(): file
+        for file in source.rglob("*")
+        if file.is_file() and "__pycache__" not in file.parts
+    }
+    with ZipFile(path) as package:
+        files = [item.filename for item in package.infolist() if not item.is_dir()]
+        if sorted(files) != sorted(expected):
+            raise ValueError("Release ZIP does not match the component file list")
+        for name, source_file in expected.items():
+            data = package.read(name)
+            if data != source_file.read_bytes():
+                raise ValueError("Release ZIP does not match the component contents")
+            destination = target / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(data)
+
+
 def main() -> int:
     """Run four isolated package phases and compare their persisted identities."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--upstream", default=UPSTREAM_COMMIT)
+    parser.add_argument(
+        "--release-zip",
+        type=Path,
+        help="Install the locally built release ZIP instead of the component checkout",
+    )
     args = parser.parse_args()
     repository = Path(__file__).resolve().parents[1]
     executable = shutil.which("git")
@@ -64,12 +91,12 @@ def main() -> int:
         .strip()
     )
     archive = run(
-        [executable, "archive", upstream, "custom_components/unifi_air_quality"],
+        [executable, "archive", upstream, COMPONENT_DIRECTORY],
         directory=repository,
     )
     with TemporaryDirectory(prefix="protect-migration-") as temporary:
         directory = Path(temporary)
-        component = directory / "custom_components/unifi_air_quality"
+        component = directory / COMPONENT_DIRECTORY
         shutil.copyfile(
             repository / "tests/_migration_worker.py", directory / "test_migration.py"
         )
@@ -100,9 +127,13 @@ def main() -> int:
             if phase.startswith("upstream"):
                 with tarfile.open(fileobj=io.BytesIO(archive)) as package:
                     package.extractall(directory, filter="data")
+            elif args.release_zip is not None:
+                install_release_zip(
+                    args.release_zip, repository / COMPONENT_DIRECTORY, component
+                )
             else:
                 shutil.copytree(
-                    repository / "custom_components/unifi_air_quality", component
+                    repository / COMPONENT_DIRECTORY, component
                 )
             state_name = (
                 "fresh_state.json" if phase == "fresh_fork" else "migration_state.json"

@@ -34,7 +34,9 @@ jobs:
       - run: ruff check .
       - run: pytest
       - name: Exercise package upgrade and rollback in disposable HA
-        run: python dev/run_migration_smoke.py
+        run: |
+          python dev/build_release_zip.py HEAD "${RUNNER_TEMP}/protect-release"
+          python dev/run_migration_smoke.py --release-zip "${RUNNER_TEMP}/protect-release/unifi_air_quality.zip"
       - name: Verify development binds only loopback
         run: |
           docker compose -f dev/compose.yaml config --format json > /tmp/compose.json

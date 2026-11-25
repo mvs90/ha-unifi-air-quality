@@ -2,6 +2,9 @@
 
 ## 0.6.0 — reliability and security improvements
 
+- Publish a HACS and Marketplace ZIP asset so catalogs can display GitHub
+  download counts without integration telemetry.
+
 - Organize installation methods as Marketplace, HACS and manual download; expand
   configuration, alarm-display, recovery and code-level documentation.
 - Show a question mark in a circle for available alarm entities whose current

@@ -6,6 +6,7 @@ import argparse
 import json
 import shutil
 import subprocess
+from io import BytesIO
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -32,14 +33,14 @@ def main() -> None:
         [git, "archive", "--format=zip", f"{commit}:{COMPONENT}"],
         cwd=ROOT,
     )
+    with ZipFile(BytesIO(payload)) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+        if manifest["domain"] != "unifi_air_quality" or archive.testzip() is not None:
+            raise ValueError("Invalid integration archive")
     args.output.mkdir(parents=True, exist_ok=True)
     destination = args.output / ASSET
     with destination.open("xb") as file:
         file.write(payload)
-    with ZipFile(destination) as archive:
-        manifest = json.loads(archive.read("manifest.json"))
-        if manifest["domain"] != "unifi_air_quality" or archive.testzip() is not None:
-            raise ValueError("Invalid integration archive")
     print(f"{destination.name}: {manifest['version']} from {commit}")
 
 

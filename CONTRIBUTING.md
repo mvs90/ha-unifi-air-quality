@@ -144,6 +144,8 @@ to make CI pass.
 
 Build from the reviewed release commit:
 `python dev/build_release_zip.py <commit> <output-directory>`.
+CI installs the resulting ZIP in the disposable migration test. To repeat it,
+run `python dev/run_migration_smoke.py --release-zip <path-to-zip>`.
 Attach the resulting `unifi_air_quality.zip` to the matching draft GitHub
 Release before publishing. The filename must match `hacs.json` exactly, and
 `manifest.json` must be at the root of the archive. Do not publish a ZIP-based

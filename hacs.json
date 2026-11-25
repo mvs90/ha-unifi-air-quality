@@ -1,4 +1,7 @@
 {
   "name": "UniFi Protect Air Quality",
-  "homeassistant": "2026.10.4"
+  "homeassistant": "2026.10.4",
+  "zip_release": true,
+  "filename": "unifi_air_quality.zip",
+  "hide_default_branch": true
 }

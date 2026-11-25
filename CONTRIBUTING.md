@@ -139,3 +139,17 @@ HACS and Hassfest validate packaging in CI. Review the final PR commit and
 its checks before merging. Security policy and exception changes require
 explicit review; do not regenerate a secret baseline or loosen a check merely
 to make CI pass.
+
+## Release ZIP
+
+Build from the reviewed release commit:
+`python dev/build_release_zip.py <commit> <output-directory>`.
+Attach the resulting `unifi_air_quality.zip` to the matching draft GitHub
+Release before publishing. The filename must match `hacs.json` exactly, and
+`manifest.json` must be at the root of the archive. Do not publish a ZIP-based
+release without its asset. Leave historical tags and assets untouched.
+
+HACS and Marketplace can count requests for the GitHub release asset. These
+are downloads, not installations: updates and repeat downloads may count
+again, while source archive downloads are not included. The integration itself
+does not report usage.

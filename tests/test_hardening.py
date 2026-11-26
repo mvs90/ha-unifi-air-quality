@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiohttp import ClientConnectionError, ClientSSLError
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
@@ -52,7 +53,6 @@ from .test_recovery import push
         {"airQuality": {"co2": "600"}},
         {"airQuality": {"co2": True}},
         {"airQuality": {"co2": float("nan")}},
-        {"airQuality": {"co2": {"status": "new-status", "value": 500}}},
         {"airQuality": {"co2": {"status": [], "value": 500}}},
     ],
 )
@@ -166,6 +166,143 @@ async def test_coordinator_brief_outage_protocol_error_and_recovery(hass, load_f
     listener.assert_called_once()
     unsub()
     await coordinator.async_shutdown()
+
+
+@pytest.mark.parametrize("status", ["future-state", "", None])
+async def test_first_refresh_keeps_measurements_with_unknown_status(
+    hass, load_fixture, status
+):
+    """An optional status cannot keep the entire config entry in setup retry."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    sensor = payload["sensors"][0]
+    sensor["airQuality"]["co2"] = {"status": status, "value": 612}
+    sensor["airQuality"]["temperature"] = {"status": "neutral", "value": 22}
+    other_sensor = deepcopy(sensor)
+    other_sensor["id"] = "second"
+    other_sensor["airQuality"]["co2"]["status"] = "neutral"
+    payload["sensors"].append(other_sensor)
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    entry = MockConfigEntry(state=ConfigEntryState.SETUP_IN_PROGRESS)
+    coordinator = UnifiAirQualityCoordinator(hass, entry, client)
+    callbacks = MagicMock()
+    client.subscribe_alarm_events(callbacks)
+    try:
+        await coordinator.async_config_entry_first_refresh()
+        assert coordinator.last_update_success
+        assert len(coordinator.data.devices) == 2
+        assert coordinator.data.devices[0].raw["airQuality"]["co2"]["value"] == 612
+        assert client.is_measurement_fresh(sensor["id"], "co2")
+        assert not client.is_alarm_fresh(sensor["id"], "co2")
+        alarm = UnifiAirQualityAlarmBinarySensor(
+            coordinator,
+            sensor["id"],
+            next(item for item in ALARM_DESCRIPTIONS if item.key == "co2_alarm"),
+        )
+        assert not alarm.available
+        assert alarm.entity_picture is None
+        assert alarm.extra_state_attributes is None
+        assert client.is_alarm_fresh(sensor["id"], "temperature")
+        assert client.is_alarm_fresh("second", "co2")
+        callbacks.assert_not_called()
+    finally:
+        await coordinator.async_shutdown()
+
+
+@pytest.mark.parametrize("transport", ["bootstrap", "websocket"])
+async def test_unrecognized_status_retires_active_alarm_without_transition(
+    load_fixture, transport
+):
+    """Keep numeric data current and only emit an end after confirmed normal."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    sensor = payload["sensors"][0]
+    sensor["airQuality"]["co2"] = {"status": "high", "value": 1400}
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    callbacks = MagicMock()
+    client.subscribe_alarm_events(callbacks)
+    await client.async_get_snapshot()
+    reading = {"status": "future-state", "value": 1111}
+    if transport == "bootstrap":
+        sensor["airQuality"]["co2"] = reading
+        await client.async_get_snapshot()
+    else:
+        push(client, {"airQuality": {"co2": reading}})
+    device = client.snapshot.devices[0]
+    assert device.raw["airQuality"]["co2"]["value"] == 1111
+    assert not device.active_alarms
+    assert device.uncertain_alarm_metrics == ("co2",)
+    assert not client.protocol_error
+    assert client.is_measurement_fresh(sensor["id"], "co2")
+    assert not client.is_alarm_fresh(sensor["id"], "co2")
+    assert [call.args[0].transition for call in callbacks.call_args_list] == ["started"]
+
+    # Recover the same alarm first; an unknown status must not create a new start.
+    push(client, {"airQuality": {"co2": {"status": "high"}}})
+    assert client.snapshot.devices[0].active_alarms[0].status == "high"
+    assert callbacks.call_count == 1
+    push(client, {"airQuality": {"co2": {"status": "neutral"}}})
+    assert client.is_alarm_fresh(sensor["id"], "co2")
+    assert not client.snapshot.devices[0].active_alarms
+    assert [call.args[0].transition for call in callbacks.call_args_list] == [
+        "started",
+        "ended",
+    ]
+
+
+async def test_unrecognized_sensor_status_preserves_independent_event(load_fixture):
+    """An active event still confirms an alarm when the sensor status is unknown."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    sensor = payload["sensors"][0]
+    sensor["airQuality"]["co2"] = {"status": "high", "value": 1400}
+    client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
+    callbacks = MagicMock()
+    client.subscribe_alarm_events(callbacks)
+    await client.async_get_snapshot()
+    events = json.loads(load_fixture("websocket_alarm_events.json"))
+    started, ended = events["extreme_started"], events["extreme_ended"]
+    client._process_websocket_payload(
+        _frame(started["action"]) + _frame(started["data"])
+    )
+    push(client, {"airQuality": {"co2": {"status": None}}})
+    assert client.snapshot.devices[0].active_alarms[0].metric == "co2"
+    assert client.is_alarm_fresh(sensor["id"], "co2")
+    client._process_websocket_payload(_frame(ended["action"]) + _frame(ended["data"]))
+    assert not client.snapshot.devices[0].active_alarms
+    assert client.snapshot.devices[0].uncertain_alarm_metrics == ("co2",)
+    assert callbacks.call_count == 1
+    push(client, {"airQuality": {"co2": {"status": "neutral"}}})
+    assert callbacks.call_args.args[0].transition == "ended"
+    assert callbacks.call_count == 2
+
+
+async def test_null_status_push_wins_over_older_bootstrap(load_fixture):
+    """A newer explicit unknown status prevents an obsolete REST alarm."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    sensor = payload["sensors"][0]
+    sensor["airQuality"]["co2"] = {"status": "neutral", "value": 612}
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    await client.async_get_snapshot()
+    callbacks = MagicMock()
+    client.subscribe_alarm_events(callbacks)
+
+    class OlderResponse(FakeResponse):
+        """Return a response whose status was superseded in flight."""
+
+        async def json(self, **kwargs):
+            """Push an explicit null status before the obsolete response arrives."""
+            push(client, {"airQuality": {"co2": {"status": None}}})
+            old = deepcopy(payload)
+            old["sensors"][0]["airQuality"]["co2"]["status"] = "high"
+            return old
+
+    session.get_response = OlderResponse()
+    snapshot = await client.async_get_snapshot()
+    assert snapshot.devices[0].raw["airQuality"]["co2"]["status"] is None
+    assert not snapshot.devices[0].active_alarms
+    assert not client.is_alarm_fresh(sensor["id"], "co2")
+    assert client.is_measurement_fresh(sensor["id"], "co2")
+    callbacks.assert_not_called()
 
 
 async def test_verified_write_normalization_failure_and_delayed_application(

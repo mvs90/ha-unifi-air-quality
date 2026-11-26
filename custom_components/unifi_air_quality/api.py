@@ -367,12 +367,18 @@ def _validate_sensor(sensor: Mapping[str, Any]) -> None:
             or not math.isfinite(value)
         ):
             raise ProtectProtocolError("Unsupported measurement value")
-        if isinstance(reading, Mapping) and "status" in reading:
-            status = reading["status"]
-            if not isinstance(status, str) or status.casefold() not in (
-                _NON_ALARM_STATUSES | _ALARM_STATUSES
-            ):
+        if isinstance(reading, Mapping):
+            status = reading.get("status")
+            # Protect can introduce enum members without changing measurement data.
+            if status is not None and not isinstance(status, str):
                 raise ProtectProtocolError("Unsupported measurement status")
+
+
+def is_known_measurement_status(status: object) -> bool:
+    """Check whether a status confirms an active alarm or an all-clear."""
+    return isinstance(status, str) and status.casefold() in (
+        _NON_ALARM_STATUSES | _ALARM_STATUSES
+    )
 
 
 def snapshot_from_bootstrap(
@@ -1137,20 +1143,20 @@ class PrivateProtectClient:
                 else {()}
             )
             readings = data.get("airQuality") if operation != "remove" else None
-            confirmed_statuses = (
+            pushed_statuses = (
                 {
                     (device_id, _canonical_metric(metric))
                     for metric, reading in readings.items()
                     if metric in _MEASUREMENT_KEYS
                     and isinstance(reading, Mapping)
-                    and isinstance(reading.get("status"), str)
+                    and "status" in reading
                 }
                 if isinstance(readings, Mapping)
                 else set()
             )
             for pending in self._pending_bootstraps.values():
                 pending.sensor_fields.setdefault(device_id, set()).update(fields)
-                pending.sensor_statuses.update(confirmed_statuses)
+                pending.sensor_statuses.update(pushed_statuses)
                 if operation == "remove":
                     pending.event_alarms = {
                         key for key in pending.event_alarms if key[0] != device_id
@@ -1378,10 +1384,8 @@ class PrivateProtectClient:
                 continue
             for wire_metric, measurement in readings.items():
                 metric = _canonical_metric(wire_metric)
-                if (
-                    isinstance(measurement, Mapping)
-                    and isinstance(measurement.get("status"), str)
-                    and measurement["status"]
+                if isinstance(measurement, Mapping) and is_known_measurement_status(
+                    measurement.get("status")
                 ):
                     key = (device.id, metric)
                     if key in previous:
@@ -1401,10 +1405,14 @@ class PrivateProtectClient:
             ):
                 continue
             metric = _canonical_metric(wire_metric)
-            if wire_metric != metric and metric in readings:
+            if (wire_metric != metric and metric in readings) or (
+                "status" not in measurement
+            ):
                 continue
-            status = measurement.get("status")
-            if not isinstance(status, str) or not status:
+            key = (device_id, metric)
+            status = measurement["status"]
+            if not is_known_measurement_status(status):
+                self._forget_unconfirmed_sensor_status(key)
                 continue
             raw_value = measurement.get("value")
             value = (
@@ -1414,7 +1422,6 @@ class PrivateProtectClient:
                 else None
             )
             alarm = ProtectAlarm(metric, status, value)
-            key = (device_id, metric)
             if status.casefold() in _NON_ALARM_STATUSES:
                 # A current normal reading resolves retired event identities and
                 # unresolvable history; still-active events remain independent sources.
@@ -1442,6 +1449,29 @@ class PrivateProtectClient:
             else:
                 self._sensor_alarm_states.pop(key, None)
             self._refresh_alarm_state(device_id, metric, alarm)
+
+    def _forget_unconfirmed_sensor_status(self, key: _AlarmKey) -> None:
+        """Retire an unverified sensor classification without emitting an end."""
+        device_id, metric = key
+        if self._sensor_alarm_states.pop(key, None) is not None:
+            # A later normal status can close this alarm; an independent event
+            # ending cannot prove this sensor-status source is clear.
+            self._unresolvable_alarm_metrics.add(key)
+            self._uncertain_alarm_metrics.add(key)
+        active_event = next(
+            (
+                alarm
+                for event_id, alarm in self._active_alarm_events.items()
+                if self._alarm_event_devices[event_id] == device_id
+                and alarm.metric == metric
+            ),
+            None,
+        )
+        if active_event is not None:
+            self._alarm_states[key] = active_event
+        else:
+            self._alarm_states.pop(key, None)
+            self._alarm_verified_at.pop(key, None)
 
     def _refresh_alarm_state(
         self, device_id: str, metric: str, transition_alarm: ProtectAlarm

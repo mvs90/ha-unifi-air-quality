@@ -89,7 +89,8 @@ async def test_alarm_platforms_add_all_entities(hass) -> None:
         ("normal", False),
         ("high", True),
         ("low", True),
-        ("warning", True),
+        ("warning", None),
+        ("", None),
         (None, False),
         (42, False),
     ],
@@ -100,6 +101,9 @@ def test_binary_alarm_interprets_measurement_status(status, expected) -> None:
         _coordinator(_device(status=status)), "device-id", _description("co2_alarm")
     )
     assert entity.is_on is expected
+    if expected is None:
+        assert entity.extra_state_attributes is None
+        assert entity.entity_picture is None
 
 
 def test_binary_alarm_prefers_active_event_and_exposes_value() -> None:

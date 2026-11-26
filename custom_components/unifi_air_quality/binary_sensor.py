@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import UnifiAirQualityConfigEntry
+from .api import is_known_measurement_status
 from .const import MEASUREMENT_ALIASES
 from .coordinator import UnifiAirQualityCoordinator
 from .entity import UnifiAirQualityEntity, async_setup_dynamic_entities
@@ -134,6 +135,8 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
         status = self._measurement_status
         if status is None:
             return False
+        if not is_known_measurement_status(status):
+            return None
         return status.casefold() not in _NON_ALARM_STATUSES
 
     @property
@@ -170,11 +173,13 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
                         result["alarm_value"] = alarm.value
                     return result
         status = self._measurement_status
-        return {"protect_status": status} if status is not None else None
+        if is_known_measurement_status(status):
+            return {"protect_status": status}
+        return None
 
     @property
     def _measurement_status(self) -> str | None:
-        """Read a nonempty status from the current metric payload."""
+        """Read a textual wire status for classification, not for publication."""
         # Missing or scalar measurements do not provide a confirmed alarm status.
         device = self.device
         air_quality = device.raw.get("airQuality") if device else None
@@ -187,4 +192,4 @@ class UnifiAirQualityAlarmBinarySensor(UnifiAirQualityEntity, BinarySensorEntity
         if not isinstance(measurement, dict):
             return None
         status = measurement.get("status")
-        return status if isinstance(status, str) and status else None
+        return status if isinstance(status, str) else None

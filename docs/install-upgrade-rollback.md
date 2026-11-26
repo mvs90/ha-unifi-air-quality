@@ -17,7 +17,7 @@ reviewed, merged change and record it alongside the manifest version. Do not
 use a moving branch or an old fork archive as a reproducible build. The
 optional staging procedure below records the commit in a `BUILD_COMMIT` file.
 
-For **0.6.0**, Home Assistant **2026.10.4** is the minimum and the tested/audited baseline.
+For **0.6.x**, Home Assistant **2026.10.4** is the minimum and the tested/audited baseline.
 Upgrade older HA installations first. That HA upgrade is a separate operation
 with its own full backup; this component's rollback cannot downgrade HA itself.
 
@@ -42,7 +42,7 @@ with its own full backup; this component's rollback cannot downgrade HA itself.
    ```
 
    Confirm `rev-parse HEAD` equals the recorded full SHA and the staged manifest
-   says `0.6.0`. An equivalent immutable archive URL is
+   matches the expected version. An equivalent immutable archive URL is
    `https://github.com/mvs90/ha-unifi-air-quality/archive/FULL_COMMIT_SHA.tar.gz`;
    replace the placeholder with the same accepted 40-character SHA. Keep the
    original archive filename containing that SHA, or record it in `BUILD_COMMIT`

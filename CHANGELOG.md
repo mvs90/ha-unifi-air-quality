@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1 — Protect bootstrap compatibility
+
+- Keep the integration running when Protect reports an unrecognized, empty or
+  null measurement status. Valid numeric readings and other alarms still
+  update; an unverified status cannot start or clear an alarm. Fixes #16.
+
 ## 0.6.0 — reliability and security improvements
 
 - Publish a HACS and Marketplace ZIP asset so catalogs can display GitHub

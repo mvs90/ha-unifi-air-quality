@@ -3,7 +3,7 @@
 Run from an existing checkout in the documented test environment. ``--upstream``
 selects a locally available Git ref for a compatible upstream 0.5.4 package;
 it defaults to the pinned UPSTREAM_COMMIT. The worker checks the expected
-0.5.4/0.6.0 manifests, so this is not a migration test for arbitrary versions.
+0.5.4/0.6.1 manifests, so this is not a migration test for arbitrary versions.
 
 All Protect data is synthetic. Four phases start separate Python processes with
 exactly one component directory. The fresh-fork phase has its own HA storage;

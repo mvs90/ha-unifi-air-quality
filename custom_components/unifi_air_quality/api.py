@@ -844,6 +844,7 @@ class PrivateProtectClient:
             # A newer HTTP request has already published its response.
             return self._snapshot
         # Validate the response and the merged state before changing the cache.
+        payload = self._retain_foreign_models(payload)
         snapshot = snapshot_from_bootstrap(
             payload, model_less_ids=self._http_model_less_ids
         )
@@ -892,6 +893,24 @@ class PrivateProtectClient:
         for device in snapshot.devices:
             self._record_measurements(device.id, device.raw)
         return snapshot
+
+    def _retain_foreign_models(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Keep contrary evidence until a fresh inventory identifies the model."""
+        sensors = payload.get("sensors")
+        if not isinstance(sensors, list):
+            return payload
+        records = []
+        for sensor in sensors:
+            if isinstance(sensor, dict) and isinstance(sensor.get("id"), str):
+                cached = self._raw_devices.get(sensor["id"], {})
+                if (
+                    _sensor_model_names(cached) - {_SUPPORTED_MODEL}
+                    and not _sensor_model_names(sensor)
+                ):
+                    # This is discovery evidence only, not proof for registry removal.
+                    sensor = sensor | _merge_sensor_identity(cached, {})
+            records.append(sensor)
+        return payload | {"sensors": records}
 
     async def _async_read_bootstrap(
         self, *, request_id: int | None = None

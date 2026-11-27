@@ -79,6 +79,22 @@ async def test_foreign_model_survives_generic_push_and_refresh(load_fixture, ope
     assert len((await client.async_get_snapshot()).devices) == 1
 
 
+async def test_unlabelled_http_refresh_cannot_clear_known_foreign_model(load_fixture):
+    """Keep contrary evidence across polls, but accept a newly identified target."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    assert len((await client.async_get_snapshot()).devices) == 1
+    foreign = payload["sensors"][-1]
+    foreign.update(airQuality={"co2": 650}, type="sensor")
+    for _ in range(2):
+        assert len((await client.async_get_snapshot()).devices) == 1
+    _, retained = await client.async_read_pairing_inventory()
+    assert foreign["id"] in retained  # Cached model evidence cannot authorize deletion.
+    foreign.update(type="UP-AirQuality", model="UP-AirQuality")
+    assert len((await client.async_get_snapshot()).devices) == 2
+
+
 async def test_late_http_model_excludes_model_less_concurrent_push(load_fixture):
     """A push cannot erase the foreign model evidence in its matching inventory."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))

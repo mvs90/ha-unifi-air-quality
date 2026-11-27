@@ -557,7 +557,7 @@ class PrivateProtectClient:
         self._headers: dict[str, str] = {}
         self._snapshot: ProtectSnapshot | None = None
         self._raw_devices: dict[str, dict[str, Any]] = {}
-        self._http_model_less_ids: set[str] = set()
+        self._http_confirmed_ids: set[str] = set()
         self._update_callback: Callable[[ProtectSnapshot], None] | None = None
         self._alarm_callbacks: set[Callable[[ProtectAlarmEvent], None]] = set()
         self._raw_alarm_events: dict[str, dict[str, Any]] = {}
@@ -846,7 +846,7 @@ class PrivateProtectClient:
         # Validate the response and the merged state before changing the cache.
         payload = self._retain_foreign_models(payload)
         snapshot = snapshot_from_bootstrap(
-            payload, model_less_ids=self._http_model_less_ids
+            payload, model_less_ids=self._http_confirmed_ids
         )
         if (
             self._snapshot is not None
@@ -854,29 +854,24 @@ class PrivateProtectClient:
         ):
             # Device IDs and stream data belong to the console that supplied them.
             raise ProtectProtocolError("Protect console identity changed")
-        http_model_less_ids = {
-            device.id
-            for device in snapshot.devices
-            if not _sensor_model_names(device.raw)
-        }
+        # Matching explicit labels strengthen discovery; they do not erase it.
+        http_confirmed_ids = {device.id for device in snapshot.devices}
         if pushes.sensor_fields or pushes.event_alarms or pushes.cursor is not None:
             payload = self._merge_bootstrap_pushes(payload, snapshot, pushes)
             snapshot = snapshot_from_bootstrap(
-                payload, model_less_ids=http_model_less_ids, discover_model_less=False
+                payload, model_less_ids=http_confirmed_ids, discover_model_less=False
             )
         self._reconcile_bootstrap_alarms(snapshot, pushes.event_alarms)
         snapshot = snapshot_from_bootstrap(
             payload,
             self._alarms_by_device(),
             self._uncertain_alarm_metrics,
-            model_less_ids=http_model_less_ids,
+            model_less_ids=http_confirmed_ids,
             discover_model_less=False,
         )
-        self._http_model_less_ids = {
-            device.id
-            for device in snapshot.devices
-            if device.id in http_model_less_ids and not _sensor_model_names(device.raw)
-        }
+        self._http_confirmed_ids = http_confirmed_ids.intersection(
+            device.id for device in snapshot.devices
+        )
         # Keep model evidence for unrelated devices: later partial pushes may
         # contain measurements but no model.
         self._raw_devices = {
@@ -903,10 +898,9 @@ class PrivateProtectClient:
         for sensor in sensors:
             if isinstance(sensor, dict) and isinstance(sensor.get("id"), str):
                 cached = self._raw_devices.get(sensor["id"], {})
-                if (
-                    _sensor_model_names(cached) - {_SUPPORTED_MODEL}
-                    and not _sensor_model_names(sensor)
-                ):
+                if _sensor_model_names(cached) - {
+                    _SUPPORTED_MODEL
+                } and not _sensor_model_names(sensor):
                     # This is discovery evidence only, not proof for registry removal.
                     sensor = sensor | _merge_sensor_identity(cached, {})
             records.append(sensor)
@@ -1119,7 +1113,7 @@ class PrivateProtectClient:
         sensor = self._raw_devices.get(device_id)
         return sensor is not None and _is_air_quality_sensor(
             sensor,
-            model_less_confirmed=device_id in self._http_model_less_ids,
+            model_less_confirmed=device_id in self._http_confirmed_ids,
             discover_model_less=False,
         )
 
@@ -1265,7 +1259,7 @@ class PrivateProtectClient:
         previous = _normalize_sensor_update(cached) if cached is not None else None
         if operation == "remove":
             self._raw_devices.pop(device_id, None)
-            self._http_model_less_ids.discard(device_id)
+            self._http_confirmed_ids.discard(device_id)
             self._clear_device_alarm_states(device_id)
         elif operation in ("add", "update"):
             data = _normalize_sensor_update(data)
@@ -1279,23 +1273,21 @@ class PrivateProtectClient:
             _deep_merge(current, data)
             current.update(identity)
             models = _sensor_model_names(current)
-            if not models and device_id not in self._http_model_less_ids:
+            if not models and device_id not in self._http_confirmed_ids:
                 # A partial, unlabelled frame cannot discover an unseen sensor.
                 # Wait for the next HTTP inventory or an explicit model.
                 return
             if _is_air_quality_sensor(
                 current,
-                model_less_confirmed=device_id in self._http_model_less_ids,
+                model_less_confirmed=device_id in self._http_confirmed_ids,
                 discover_model_less=False,
             ):
                 _validate_sensor(current)
-                if models:
-                    self._http_model_less_ids.discard(device_id)
                 self._raw_devices[device_id] = current
                 self._record_measurements(device_id, data)
                 self._process_sensor_alarm_statuses(device_id, data)
             else:
-                self._http_model_less_ids.discard(device_id)
+                self._http_confirmed_ids.discard(device_id)
                 self._raw_devices[device_id] = current
                 if was_supported:
                     self._clear_device_alarm_states(device_id)
@@ -1779,7 +1771,7 @@ class PrivateProtectClient:
             raw,
             self._alarms_by_device(),
             self._uncertain_alarm_metrics,
-            model_less_ids=self._http_model_less_ids,
+            model_less_ids=self._http_confirmed_ids,
             discover_model_less=False,
         )
         self._notify_update()

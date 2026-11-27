@@ -200,6 +200,35 @@ async def test_model_less_device_survives_null_but_not_identity_revocation(revoc
     assert not session.patch_calls
 
 
+@pytest.mark.parametrize("label_transport", ["http", "websocket"])
+async def test_confirmed_device_retains_eligibility_after_matching_label(
+    label_transport,
+):
+    """A positive label cannot erase prior HTTP proof when later fields go null."""
+    sensor = {"id": "test-device", "type": "sensor", "airQuality": {"co2": 600}}
+    payload = {"nvr": {"id": "test-console"}, "sensors": [sensor]}
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    assert len((await client.async_get_snapshot()).devices) == 1
+    action = {"modelKey": "sensor", "action": "update", "id": sensor["id"]}
+    if label_transport == "http":
+        sensor["type"] = "UP-AirQuality"
+        assert len((await client.async_get_snapshot()).devices) == 1
+    else:
+        send(client, action, {"type": "UP-AirQuality"})
+        assert len(client.snapshot.devices) == 1
+    sensor.update(type="sensor", airQuality={"co2": None})
+    assert len((await client.async_get_snapshot()).devices) == 1
+
+    # The confirmed identity still authorizes a legitimate settings change.
+    settings = {"ledSettings": {"isEnabled": True}}
+    sensor.update(settings)
+    await client.async_update_device(sensor["id"], settings)
+    assert len(session.patch_calls) == 1
+    send(client, action, {"airQuality": {"co2": 650}})
+    assert client.snapshot.devices[0].raw["airQuality"]["co2"] == 650
+
+
 async def test_real_air_quality_invalid_event_still_fails_closed(load_fixture):
     """Unrecognized metrics on a supported device still fail validation."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))

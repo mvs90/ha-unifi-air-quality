@@ -149,6 +149,10 @@ async def test_paired_sensor_with_unknown_model_is_not_removable(hass, load_fixt
         ({"type": "UP-Sense"}, True),
         ({"type": "future-model"}, False),
         ({"type": "UP-AirQuality", "sku": "USL-Entry"}, False),
+        ({"type": "USL-Entry", "sku": "future-model"}, False),
+        ({"type": "USL-Entry", "sku": "USL-Smoke"}, False),
+        ({"type": "USL-Entry", "sku": "usl entry"}, True),
+        ({"type": "sensor", "sku": "USL-Entry"}, True),
         ({}, False),
     ],
 )

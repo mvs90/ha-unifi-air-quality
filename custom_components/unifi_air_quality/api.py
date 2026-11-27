@@ -15,7 +15,7 @@ import logging
 import math
 import re
 import zlib
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Set
 from copy import deepcopy
 from dataclasses import dataclass, field
 from http.cookies import SimpleCookie
@@ -212,6 +212,7 @@ class _BootstrapPushes:
     """Fields confirmed by the stream while one HTTP bootstrap is in flight."""
 
     sensor_fields: dict[str, set[_FieldPath]] = field(default_factory=dict)
+    sensor_models: dict[str, set[str]] = field(default_factory=dict)
     # A sensor status is newer evidence only if its status field was pushed.
     sensor_statuses: set[_AlarmKey] = field(default_factory=set)
     event_alarms: set[_AlarmKey] = field(default_factory=set)
@@ -358,11 +359,18 @@ def _sensor_model_names(sensor: Mapping[str, Any]) -> set[str]:
     } - _GENERIC_MODEL_NAMES
 
 
-def _is_air_quality_sensor(sensor: Mapping[str, Any]) -> bool:
+def _is_air_quality_sensor(
+    sensor: Mapping[str, Any],
+    *,
+    model_less_confirmed: bool = False,
+    discover_model_less: bool = True,
+) -> bool:
     """Accept an explicit model or distinctive numeric data without a model."""
     models = _sensor_model_names(sensor)
     if models:
-        return _SUPPORTED_MODEL in models and models.isdisjoint(_OTHER_SENSOR_MODELS)
+        return models == {_SUPPORTED_MODEL}
+    if model_less_confirmed or not discover_model_less:
+        return model_less_confirmed
     readings = sensor.get("airQuality")
     if isinstance(readings, Mapping):
         for metric in _AIR_QUALITY_SIGNATURE & readings.keys():
@@ -375,6 +383,22 @@ def _is_air_quality_sensor(sensor: Mapping[str, Any]) -> bool:
             ):
                 return True
     return False
+
+
+def _merge_sensor_identity(
+    inventory: Mapping[str, Any], pushed: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Overlay supplied labels without letting socket data erase foreign evidence."""
+    identity = {key: inventory[key] for key in _MODEL_FIELDS if key in inventory}
+    for key, value in pushed.items():
+        if (
+            key in identity
+            and _sensor_model_names({key: identity[key]}) - {_SUPPORTED_MODEL}
+            and _sensor_model_names({key: value}) == {_SUPPORTED_MODEL}
+        ):
+            continue
+        identity[key] = value
+    return identity
 
 
 def _validate_sensor(sensor: Mapping[str, Any]) -> None:
@@ -415,6 +439,9 @@ def snapshot_from_bootstrap(
     payload: Mapping[str, Any],
     active_alarms: Mapping[str, tuple[ProtectAlarm, ...]] | None = None,
     uncertain_alarm_metrics: set[tuple[str, str]] | None = None,
+    *,
+    model_less_ids: Set[str] = frozenset(),
+    discover_model_less: bool = True,
 ) -> ProtectSnapshot:
     """Validate the full inventory and copy supported devices into a snapshot.
 
@@ -443,7 +470,11 @@ def snapshot_from_bootstrap(
         if device_id in seen_ids:
             raise ProtectProtocolError("Bootstrap contains duplicate sensor IDs")
         seen_ids.add(device_id)
-        if not _is_air_quality_sensor(sensor):
+        if not _is_air_quality_sensor(
+            sensor,
+            model_less_confirmed=device_id in model_less_ids,
+            discover_model_less=discover_model_less,
+        ):
             # Unknown models are valid, but the inventory structure is not optional.
             continue
         _validate_sensor(sensor)
@@ -526,6 +557,7 @@ class PrivateProtectClient:
         self._headers: dict[str, str] = {}
         self._snapshot: ProtectSnapshot | None = None
         self._raw_devices: dict[str, dict[str, Any]] = {}
+        self._http_model_less_ids: set[str] = set()
         self._update_callback: Callable[[ProtectSnapshot], None] | None = None
         self._alarm_callbacks: set[Callable[[ProtectAlarmEvent], None]] = set()
         self._raw_alarm_events: dict[str, dict[str, Any]] = {}
@@ -763,7 +795,7 @@ class PrivateProtectClient:
         retained_ids = set()
         for sensor in payload["sensors"]:
             models = _sensor_model_names(sensor)
-            if _SUPPORTED_MODEL in models or models.isdisjoint(_OTHER_SENSOR_MODELS):
+            if len(models) != 1 or not models <= _OTHER_SENSOR_MODELS:
                 retained_ids.add(sensor["id"])
         return snapshot.console_id, frozenset(retained_ids)
 
@@ -800,7 +832,7 @@ class PrivateProtectClient:
         pushes = self._pending_bootstraps[request_id] = _BootstrapPushes()
         try:
             payload = await self._async_read_bootstrap(request_id=request_id)
-        except (_SupersededBootstrap, ProtectProtocolError, ProtectInvalidAuth):
+        except _SupersededBootstrap, ProtectProtocolError, ProtectInvalidAuth:
             if request_id < self._last_refresh_applied and self._snapshot is not None:
                 # A failed superseded request cannot poison newer verified health.
                 return self._snapshot
@@ -812,14 +844,38 @@ class PrivateProtectClient:
             # A newer HTTP request has already published its response.
             return self._snapshot
         # Validate the response and the merged state before changing the cache.
-        snapshot = snapshot_from_bootstrap(payload)
+        snapshot = snapshot_from_bootstrap(
+            payload, model_less_ids=self._http_model_less_ids
+        )
+        if (
+            self._snapshot is not None
+            and snapshot.console_id != self._snapshot.console_id
+        ):
+            # Device IDs and stream data belong to the console that supplied them.
+            raise ProtectProtocolError("Protect console identity changed")
+        http_model_less_ids = {
+            device.id
+            for device in snapshot.devices
+            if not _sensor_model_names(device.raw)
+        }
         if pushes.sensor_fields or pushes.event_alarms or pushes.cursor is not None:
             payload = self._merge_bootstrap_pushes(payload, snapshot, pushes)
-            snapshot = snapshot_from_bootstrap(payload)
+            snapshot = snapshot_from_bootstrap(
+                payload, model_less_ids=http_model_less_ids, discover_model_less=False
+            )
         self._reconcile_bootstrap_alarms(snapshot, pushes.event_alarms)
         snapshot = snapshot_from_bootstrap(
-            payload, self._alarms_by_device(), self._uncertain_alarm_metrics
+            payload,
+            self._alarms_by_device(),
+            self._uncertain_alarm_metrics,
+            model_less_ids=http_model_less_ids,
+            discover_model_less=False,
         )
+        self._http_model_less_ids = {
+            device.id
+            for device in snapshot.devices
+            if device.id in http_model_less_ids and not _sensor_model_names(device.raw)
+        }
         # Keep model evidence for unrelated devices: later partial pushes may
         # contain measurements but no model.
         self._raw_devices = {
@@ -903,17 +959,27 @@ class PrivateProtectClient:
             current = self._raw_devices.get(device_id)
             if current is None:
                 devices.pop(device_id, None)
-            elif () in fields:
-                # An add supersedes old readings, but a model-less frame cannot
-                # erase explicit hardware identity from the same inventory.
-                identity = {
-                    key: devices[device_id][key]
-                    for key in _MODEL_FIELDS
-                    if device_id in devices and key in devices[device_id]
+                continue
+            supplied = {
+                key: current[key] for key in pushes.sensor_models.get(device_id, ())
+            }
+            if () in fields:
+                # An add replaces readings, not unmentioned hardware identifiers.
+                record = {
+                    key: value
+                    for key, value in current.items()
+                    if key not in _MODEL_FIELDS
                 }
-                devices[device_id] = identity | deepcopy(current)
+                identity = _merge_sensor_identity(devices.get(device_id, {}), supplied)
+                devices[device_id] = deepcopy(record | identity)
             elif device_id in devices:
-                _copy_pushed_fields(devices[device_id], current, fields)
+                record = devices[device_id]
+                _copy_pushed_fields(
+                    record,
+                    current,
+                    {path for path in fields if path[0] not in _MODEL_FIELDS},
+                )
+                record.update(_merge_sensor_identity(record, supplied))
 
         for device_id, metric in pushes.event_alarms:
             readings = devices.get(device_id, {}).get("airQuality", {})
@@ -963,13 +1029,13 @@ class PrivateProtectClient:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", device_id):
             # Even a percent-encoded slash can escape one API path segment.
             raise ProtectProtocolError("Invalid Protect sensor identifier")
-        if not _is_air_quality_sensor(self._raw_devices[device_id]):
+        if not self._is_current_air_quality_sensor(device_id):
             raise ProtectProtocolError("Air quality device is not available")
 
         async with self._write_lock:
             await self._async_authenticate()
             for attempt in range(2):
-                if not _is_air_quality_sensor(self._raw_devices.get(device_id, {})):
+                if not self._is_current_air_quality_sensor(device_id):
                     raise ProtectWriteUnconfirmed("Sensor was removed before the write")
                 generation = self._auth_generation
                 try:
@@ -1020,14 +1086,23 @@ class PrivateProtectClient:
                 ) from err
             self._notify_update()
             confirmed = self._raw_devices.get(device_id, {})
-            if not _is_air_quality_sensor(confirmed) or not _contains_update(
-                confirmed, update
-            ):
+            if not self._is_current_air_quality_sensor(
+                device_id
+            ) or not _contains_update(confirmed, update):
                 raise ProtectWriteUnconfirmed(
                     "Protect has not applied the requested value or normalized it. "
                     "The displayed setting reflects confirmed Protect state; "
                     "wait for the next refresh before retrying."
                 )
+
+    def _is_current_air_quality_sensor(self, device_id: str) -> bool:
+        """Require a cached record with explicit or retained inventory eligibility."""
+        sensor = self._raw_devices.get(device_id)
+        return sensor is not None and _is_air_quality_sensor(
+            sensor,
+            model_less_confirmed=device_id in self._http_model_less_ids,
+            discover_model_less=False,
+        )
 
     def start_websocket(self) -> None:
         """Start the background stream task once after an initial inventory load."""
@@ -1165,11 +1240,13 @@ class PrivateProtectClient:
 
         operation = action.get("action")
         cached = self._raw_devices.get(device_id)
+        was_supported = self._is_current_air_quality_sensor(device_id)
         # Preserve an unmodified canonical view for changed-field tracking too;
         # otherwise an alias rename can look like replacement of the whole reading.
         previous = _normalize_sensor_update(cached) if cached is not None else None
         if operation == "remove":
             self._raw_devices.pop(device_id, None)
+            self._http_model_less_ids.discard(device_id)
             self._clear_device_alarm_states(device_id)
         elif operation in ("add", "update"):
             data = _normalize_sensor_update(data)
@@ -1178,21 +1255,30 @@ class PrivateProtectClient:
                 if key in data and not _sensor_model_names({key: data[key]}):
                     data.pop(key)
             current = deepcopy(previous) if previous is not None else {"id": device_id}
+            pushed_identity = {key: data[key] for key in _MODEL_FIELDS if key in data}
+            identity = _merge_sensor_identity(current, pushed_identity)
             _deep_merge(current, data)
-            if not _sensor_model_names(current) and (
-                previous is None or not _is_air_quality_sensor(previous)
-            ):
+            current.update(identity)
+            models = _sensor_model_names(current)
+            if not models and device_id not in self._http_model_less_ids:
                 # A partial, unlabelled frame cannot discover an unseen sensor.
                 # Wait for the next HTTP inventory or an explicit model.
                 return
-            if _is_air_quality_sensor(current):
+            if _is_air_quality_sensor(
+                current,
+                model_less_confirmed=device_id in self._http_model_less_ids,
+                discover_model_less=False,
+            ):
                 _validate_sensor(current)
+                if models:
+                    self._http_model_less_ids.discard(device_id)
                 self._raw_devices[device_id] = current
                 self._record_measurements(device_id, data)
                 self._process_sensor_alarm_statuses(device_id, data)
             else:
+                self._http_model_less_ids.discard(device_id)
                 self._raw_devices[device_id] = current
-                if previous is not None and _is_air_quality_sensor(previous):
+                if was_supported:
                     self._clear_device_alarm_states(device_id)
         else:
             raise ProtectProtocolError("Unsupported sensor update operation")
@@ -1220,12 +1306,19 @@ class PrivateProtectClient:
                 pending.sensor_fields.setdefault(device_id, set()).update(fields)
                 pending.sensor_statuses.update(pushed_statuses)
                 if operation == "remove":
+                    pending.sensor_models.pop(device_id, None)
                     pending.event_alarms = {
                         key for key in pending.event_alarms if key[0] != device_id
                     }
                     pending.sensor_statuses = {
                         key for key in pending.sensor_statuses if key[0] != device_id
                     }
+                else:
+                    pending.sensor_models.setdefault(device_id, set()).update(
+                        key
+                        for key, value in pushed_identity.items()
+                        if identity[key] == value
+                    )
                 if isinstance(cursor, str):
                     pending.cursor = cursor
         self._rebuild_snapshot(cursor)
@@ -1266,8 +1359,7 @@ class PrivateProtectClient:
             raise ProtectProtocolError("Alarm event is missing device or metric")
         # Protect also publishes UP-Sense alarm events. Ignore other models
         # before checking the stricter UP-AirQuality measurement vocabulary.
-        sensor = self._raw_devices.get(device_id)
-        if sensor is None or not _is_air_quality_sensor(sensor):
+        if not self._is_current_air_quality_sensor(device_id):
             return
         metric, status, value = self._alarm_details(current)
         if metric is None:
@@ -1665,7 +1757,11 @@ class PrivateProtectClient:
             ),
         }
         self._snapshot = snapshot_from_bootstrap(
-            raw, self._alarms_by_device(), self._uncertain_alarm_metrics
+            raw,
+            self._alarms_by_device(),
+            self._uncertain_alarm_metrics,
+            model_less_ids=self._http_model_less_ids,
+            discover_model_less=False,
         )
         self._notify_update()
 

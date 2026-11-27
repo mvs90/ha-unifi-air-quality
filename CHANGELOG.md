@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.3 — Protect device identity
+
+- Refuse registry cleanup when normalized Protect model identifiers disagree.
+- Keep fresh inventory identity when a partial WebSocket add races a refresh.
+  A socket update cannot promote a known foreign sensor into a writable device.
+- Keep HTTP-discovered model-less sensors registered through missing readings.
+  Removal or explicit foreign identity revokes that eligibility.
+
 ## 0.6.2 — UP-AirQuality device discovery
 
 - Do not register other Protect sensor models as UP-AirQuality based on an

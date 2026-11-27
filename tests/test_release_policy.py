@@ -31,7 +31,7 @@ def test_distribution_versions_are_consistent():
         (ROOT / "custom_components/unifi_air_quality/manifest.json").read_text()
     )
     version = manifest["version"]
-    assert project["project"]["version"] == version == "0.6.2"
+    assert project["project"]["version"] == version == "0.6.3"
     assert f"## {version} " in (ROOT / "CHANGELOG.md").read_text()
 
 

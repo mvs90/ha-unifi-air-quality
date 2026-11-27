@@ -97,7 +97,7 @@ async def test_package_install_upgrade_rollback(hass, hass_storage):
     manifest = json.loads(
         Path("custom_components/unifi_air_quality/manifest.json").read_text()
     )
-    assert manifest["version"] == ("0.5.4" if PHASE.startswith("upstream") else "0.6.2")
+    assert manifest["version"] == ("0.5.4" if PHASE.startswith("upstream") else "0.6.3")
     import custom_components.unifi_air_quality.api as loaded_api
 
     assert Path(loaded_api.__file__).is_relative_to(Path.cwd())

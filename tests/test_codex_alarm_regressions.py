@@ -21,9 +21,7 @@ def send(client, action, data):
 
 
 @pytest.mark.parametrize("cache_unrelated", [False, True])
-async def test_unrelated_protect_sensor_alarm_is_ignored(
-    cache_unrelated, load_fixture
-):
+async def test_unrelated_protect_sensor_alarm_is_ignored(cache_unrelated, load_fixture):
     """A UP-Sense light alarm must not poison monitoring of UP-AirQuality."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
     client = _client(FakeSession(FakeResponse(), FakeResponse(payload=payload)))
@@ -81,6 +79,22 @@ async def test_foreign_model_survives_generic_push_and_refresh(load_fixture, ope
     assert len((await client.async_get_snapshot()).devices) == 1
 
 
+async def test_unlabelled_http_refresh_cannot_clear_known_foreign_model(load_fixture):
+    """Keep contrary evidence across polls, but accept a newly identified target."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    assert len((await client.async_get_snapshot()).devices) == 1
+    foreign = payload["sensors"][-1]
+    foreign.update(airQuality={"co2": 650}, type="sensor")
+    for _ in range(2):
+        assert len((await client.async_get_snapshot()).devices) == 1
+    _, retained = await client.async_read_pairing_inventory()
+    assert foreign["id"] in retained  # Cached model evidence cannot authorize deletion.
+    foreign.update(type="UP-AirQuality", model="UP-AirQuality")
+    assert len((await client.async_get_snapshot()).devices) == 2
+
+
 async def test_late_http_model_excludes_model_less_concurrent_push(load_fixture):
     """A push cannot erase the foreign model evidence in its matching inventory."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))
@@ -109,6 +123,110 @@ async def test_late_http_model_excludes_model_less_concurrent_push(load_fixture)
     assert len((await client.async_get_snapshot()).devices) == 1
     assert all(len(snapshot.devices) == 1 for snapshot in snapshots)
     assert not client.is_measurement_fresh("legacy", "co2")
+
+
+@pytest.mark.parametrize("old_type", ["sensor", "UP-AirQuality"])
+@pytest.mark.parametrize("pushed_type", [None, "UP-AirQuality"])
+async def test_fresh_foreign_identity_wins_over_racing_socket_add(
+    old_type, pushed_type
+):
+    """No generic, inherited or conflicting pushed label can authorize a write."""
+    sensor = {"id": "test-device", "type": old_type, "airQuality": {"co2": 600}}
+    payload = {"nvr": {"id": "test-console"}, "sensors": [sensor]}
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    assert len((await client.async_get_snapshot()).devices) == 1
+    fresh = deepcopy(payload)
+    fresh["sensors"][0]["type"] = "USL-Entry"
+    response = FakeResponse(payload=fresh)
+
+    async def receive_inventory(**kwargs):
+        """Interleave a partial add with the response carrying foreign identity."""
+        readings = {"airQuality": {"co2": 650}}
+        if pushed_type is not None:
+            readings["type"] = pushed_type
+        send(
+            client,
+            {"modelKey": "sensor", "action": "add", "id": sensor["id"]},
+            readings,
+        )
+        return fresh
+
+    response.json = receive_inventory
+    session.get_response = response
+    assert not (await client.async_get_snapshot()).devices
+    # A later conflicting socket update must not undo that decision either.
+    send(
+        client,
+        {"modelKey": "sensor", "action": "update", "id": sensor["id"]},
+        {"type": "UP-AirQuality", "airQuality": {"co2": 680}},
+    )
+    assert not client.snapshot.devices
+    with pytest.raises(ProtectProtocolError, match="not available"):
+        await client.async_update_device(
+            sensor["id"], {"ledSettings": {"isEnabled": True}}
+        )
+    assert not session.patch_calls
+
+
+@pytest.mark.parametrize("revocation", ["remove", "foreign-model", "absent-http"])
+async def test_model_less_device_survives_null_but_not_identity_revocation(revocation):
+    """Maintain the device across null samples and require new proof after loss."""
+    sensor = {"id": "test-device", "type": "sensor", "airQuality": {"co2": 600}}
+    payload = {"nvr": {"id": "test-console"}, "sensors": [sensor]}
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    assert len((await client.async_get_snapshot()).devices) == 1
+    action = {"modelKey": "sensor", "action": "update", "id": sensor["id"]}
+    send(client, action, {"airQuality": {"co2": None}})
+    assert client.snapshot.devices[0].raw["airQuality"]["co2"] is None
+    sensor["airQuality"]["co2"] = None
+    assert len((await client.async_get_snapshot()).devices) == 1
+    send(client, action, {"airQuality": {"co2": 650}})
+    assert client.snapshot.devices[0].raw["airQuality"]["co2"] == 650
+    if revocation == "foreign-model":
+        send(client, action, {"sku": "USL-Motion"})
+    elif revocation == "remove":
+        send(client, action | {"action": "remove"}, {})
+    else:
+        session.get_response = FakeResponse(payload=payload | {"sensors": []})
+        assert not (await client.async_get_snapshot()).devices
+    send(client, action, {"airQuality": {"co2": 700}})
+    assert not client.snapshot.devices
+    with pytest.raises(ProtectProtocolError, match="not available"):
+        await client.async_update_device(
+            sensor["id"], {"ledSettings": {"isEnabled": True}}
+        )
+    assert not session.patch_calls
+
+
+@pytest.mark.parametrize("label_transport", ["http", "websocket"])
+async def test_confirmed_device_retains_eligibility_after_matching_label(
+    label_transport,
+):
+    """A positive label cannot erase prior HTTP proof when later fields go null."""
+    sensor = {"id": "test-device", "type": "sensor", "airQuality": {"co2": 600}}
+    payload = {"nvr": {"id": "test-console"}, "sensors": [sensor]}
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    assert len((await client.async_get_snapshot()).devices) == 1
+    action = {"modelKey": "sensor", "action": "update", "id": sensor["id"]}
+    if label_transport == "http":
+        sensor["type"] = "UP-AirQuality"
+        assert len((await client.async_get_snapshot()).devices) == 1
+    else:
+        send(client, action, {"type": "UP-AirQuality"})
+        assert len(client.snapshot.devices) == 1
+    sensor.update(type="sensor", airQuality={"co2": None})
+    assert len((await client.async_get_snapshot()).devices) == 1
+
+    # The confirmed identity still authorizes a legitimate settings change.
+    settings = {"ledSettings": {"isEnabled": True}}
+    sensor.update(settings)
+    await client.async_update_device(sensor["id"], settings)
+    assert len(session.patch_calls) == 1
+    send(client, action, {"airQuality": {"co2": 650}})
+    assert client.snapshot.devices[0].raw["airQuality"]["co2"] == 650
 
 
 async def test_real_air_quality_invalid_event_still_fails_closed(load_fixture):

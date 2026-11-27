@@ -141,6 +141,79 @@ async def test_paired_sensor_with_unknown_model_is_not_removable(hass, load_fixt
     assert not await async_remove_config_entry_device(hass, entry, device)
 
 
+@pytest.mark.parametrize(
+    ("model_data", "removable"),
+    [
+        ({"type": "USL-Entry"}, True),
+        ({"sku": "USL-Smoke"}, True),
+        ({"type": "UP-Sense"}, True),
+        ({"type": "future-model"}, False),
+        ({"type": "UP-AirQuality", "sku": "USL-Entry"}, False),
+        ({}, False),
+    ],
+)
+async def test_legacy_registry_cleanup_requires_positive_model_evidence(
+    hass, load_fixture, model_data, removable
+):
+    """Only explicit HA removal can detach a known non-target paired device."""
+    entry, original, session, payload = await _runtime(hass, load_fixture)
+    registry = dr.async_get(hass)
+    legacy = registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, "legacy")},
+    )
+    payload["sensors"].append({"id": "legacy", "airQuality": {}, **model_data})
+    session.get_response = FakeResponse(payload=payload)
+    assert await async_remove_config_entry_device(hass, entry, legacy) is removable
+    assert registry.async_get(legacy.id) is legacy
+    assert not await async_remove_config_entry_device(hass, entry, original)
+    assert not session.patch_calls
+
+
+async def test_mixed_inventory_registers_only_air_quality_and_cleans_legacy_entry(
+    hass, load_fixture
+):
+    """Set up all platforms and remove just the old HA registration on request."""
+    payload = json.loads(load_fixture("bootstrap_nox.json"))
+    original_id = payload["sensors"][0]["id"]
+    for kind in ("USL-Entry", "USL-Motion", "USL-Smoke"):
+        payload["sensors"].append({"id": kind, "sku": kind, "airQuality": {}})
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    entry = MockConfigEntry(
+        domain=DOMAIN, unique_id=payload["nvr"]["id"], data=USER_INPUT.copy()
+    )
+    entry.add_to_hass(hass)
+    devices = dr.async_get(hass)
+    legacy = devices.async_get_or_create(
+        config_entry_id=entry.entry_id, identifiers={(DOMAIN, "USL-Smoke")}
+    )
+    with (
+        patch(
+            "custom_components.unifi_air_quality.PrivateProtectClient",
+            return_value=client,
+        ),
+        patch.object(client, "start_websocket"),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+    try:
+        await hass.async_block_till_done()
+        registry = er.async_get(hass)
+        before = er.async_entries_for_config_entry(registry, entry.entry_id)
+        assert len(before) == 71
+        assert registry.async_get(before[0].entity_id).device_id != legacy.id
+        assert await async_remove_config_entry_device(hass, entry, legacy)
+        devices.async_remove_device(legacy.id)
+        await entry.runtime_data.coordinator.async_refresh()
+        await hass.async_block_till_done()
+        assert er.async_entries_for_config_entry(registry, entry.entry_id) == before
+        remaining = dr.async_entries_for_config_entry(devices, entry.entry_id)
+        assert [device.identifiers for device in remaining] == [{(DOMAIN, original_id)}]
+        assert not session.patch_calls
+    finally:
+        assert await hass.config_entries.async_unload(entry.entry_id)
+
+
 async def test_deliberately_removed_device_is_rediscovered_on_all_platforms(
     hass, load_fixture
 ):

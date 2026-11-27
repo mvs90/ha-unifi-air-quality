@@ -55,6 +55,62 @@ async def test_unrelated_protect_sensor_alarm_is_ignored(
     callback.assert_not_called()
 
 
+@pytest.mark.parametrize("operation", ["add", "update"])
+async def test_foreign_model_survives_generic_push_and_refresh(load_fixture, operation):
+    """A known non-target sensor never publishes or accepts a settings write."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    sensor = {"id": "legacy", "type": "USL-Entry", "airQuality": {}}
+    payload["sensors"].append(sensor)
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    await client.async_get_snapshot()
+    callback = MagicMock()
+    client.subscribe_alarm_events(callback)
+    send(
+        client,
+        {"modelKey": "sensor", "action": operation, "id": "legacy"},
+        {"type": "sensor", "airQuality": {"co2": {"status": "high", "value": 900}}},
+    )
+    assert len(client.snapshot.devices) == 1
+    assert not client.is_measurement_fresh("legacy", "co2")
+    assert not client.is_alarm_fresh("legacy", "co2")
+    callback.assert_not_called()
+    with pytest.raises(ProtectProtocolError, match="not available"):
+        await client.async_update_device("legacy", {"ledSettings": {}})
+    assert not session.patch_calls
+    assert len((await client.async_get_snapshot()).devices) == 1
+
+
+async def test_late_http_model_excludes_model_less_concurrent_push(load_fixture):
+    """A push cannot erase the foreign model evidence in its matching inventory."""
+    payload = json.loads(load_fixture("bootstrap_air_quality.json"))
+    payload["sensors"].append({"id": "legacy", "sku": "USL-Smoke"})
+    session = FakeSession(FakeResponse(), FakeResponse(payload=payload))
+    client = _client(session)
+    session.get_response = FakeResponse(
+        payload=payload | {"sensors": payload["sensors"][:-1]}
+    )
+    await client.async_get_snapshot()
+    snapshots = []
+    client._update_callback = snapshots.append
+    response = FakeResponse(payload=payload)
+
+    async def receive_inventory(**kwargs):
+        """Deliver an untagged add before the HTTP model information is read."""
+        send(
+            client,
+            {"modelKey": "sensor", "action": "add", "id": "legacy"},
+            {"airQuality": {"co2": 900}},
+        )
+        return payload
+
+    response.json = receive_inventory
+    session.get_response = response
+    assert len((await client.async_get_snapshot()).devices) == 1
+    assert all(len(snapshot.devices) == 1 for snapshot in snapshots)
+    assert not client.is_measurement_fresh("legacy", "co2")
+
+
 async def test_real_air_quality_invalid_event_still_fails_closed(load_fixture):
     """Unrecognized metrics on a supported device still fail validation."""
     payload = json.loads(load_fixture("bootstrap_air_quality.json"))

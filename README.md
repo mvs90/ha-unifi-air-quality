@@ -381,6 +381,11 @@ Home Assistant and use **Delete**. Protect must be reachable so the integration
 can confirm removal. A sensor that is temporarily offline should remain in Home
 Assistant; its existing entities recover when it returns.
 
+**A different Protect sensor was added by mistake:** Update to 0.6.2 or newer,
+then use **Delete** on its device page under **UniFi Protect Air Quality**.
+Do not unpair it from Protect. Home Assistant allows removal only after this
+integration verifies that Protect identifies it as a known unsupported model.
+
 **One console:** Delete only that console's integration entry under
 **Settings → Devices & services**. Keep the integration files while any other
 console still uses them.

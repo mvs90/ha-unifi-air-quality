@@ -12,6 +12,7 @@ If Protect assigns a new ID, Home Assistant sees a new device.
 | Sensor is paired but offline | Registry metadata is retained and entities become unavailable. Explicit device removal is refused. |
 | Protect cannot provide a valid inventory | Registry metadata is retained. A timeout, rejected login or incompatible response cannot authorize removal. |
 | Sensor is no longer paired, confirmed by a new valid inventory | The user can explicitly remove its device from the Home Assistant device page. |
+| An older version imported a known unsupported sensor | The user can explicitly delete the device from this integration without unpairing it in Protect. A fresh inventory must identify it as a recognized non-target model without conflicting model identifiers. |
 
 To remove a sensor permanently:
 

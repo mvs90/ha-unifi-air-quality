@@ -120,7 +120,7 @@ async def async_remove_config_entry_device(
     entry: UnifiAirQualityConfigEntry,
     device_entry: dr.DeviceEntry,
 ) -> bool:
-    """Allow explicit cleanup only after Protect confirms this sensor is unpaired.
+    """Allow explicit cleanup of an unpaired or positively identified other model.
 
     The coordinator may retain a recent snapshot during network errors. Fetch
     directly so an outage, an unsupported inventory, or cached stream removal
@@ -137,9 +137,9 @@ async def async_remove_config_entry_device(
     if not device_ids or runtime is None:
         return False
     try:
-        console_id, paired_ids = await runtime.client.async_read_pairing_inventory()
+        console_id, retained_ids = await runtime.client.async_read_pairing_inventory()
     except ProtectApiError:
         return False
     if console_id != entry.unique_id:
         return False
-    return device_ids.isdisjoint(paired_ids)
+    return device_ids.isdisjoint(retained_ids)

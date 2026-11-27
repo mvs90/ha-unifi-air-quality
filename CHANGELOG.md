@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.2 — UP-AirQuality device discovery
+
+- Do not register other Protect sensor models as UP-AirQuality based on an
+  empty or incidental air-quality field. Keep partial WebSocket updates from
+  overriding known hardware identity.
+- Allow explicit removal of previously misclassified devices from the Home
+  Assistant integration when Protect confirms a known unsupported model.
+  Devices remain paired in Protect.
+
 ## 0.6.1 — Protect bootstrap compatibility
 
 - Keep the integration running when Protect reports an unrecognized, empty or

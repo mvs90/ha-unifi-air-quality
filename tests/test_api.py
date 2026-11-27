@@ -35,6 +35,39 @@ def test_snapshot_recognizes_air_quality_payload_without_model() -> None:
     assert snapshot.devices[0].id == "sensor"
 
 
+@pytest.mark.parametrize(
+    ("model_data", "readings", "supported"),
+    [
+        ({"type": "UP-Sense"}, {}, False),
+        ({"sku": "USL-Entry"}, {"co2": 600}, False),
+        ({"productModel": "USL-Entry-R"}, {"co2": 600}, False),
+        ({"model": "USL-Smoke"}, {"co2": 600}, False),
+        ({"model": "USL-Motion"}, {"co2": 600}, False),
+        ({"type": "USL-Environmental"}, {"pm2p5": 8}, False),
+        ({"type": "USL-GlassBreak"}, {}, False),
+        ({"type": "future-model"}, {"co2": 600}, False),
+        ({"type": "UP-AirQuality", "sku": "USL-Smoke"}, {"co2": 600}, False),
+        ({"type": "sensor", "sku": "UP-AirQuality"}, {}, True),
+        ({"model": "UP-AirQuality"}, {"co2": None}, True),
+        ({"type": "sensor"}, {"temperature": 22, "humidity": 49}, False),
+        ({}, {}, False),
+        ({}, {"other": 1}, False),
+        ({}, {"co2": {"status": "neutral"}}, False),
+        ({}, {"co2": {"value": True}}, False),
+        ({}, {"co2": float("inf")}, False),
+        ({}, {"pm2_5": {"value": 5}}, True),
+        ({"type": "unknown"}, {"co2": 612}, True),
+    ],
+)
+def test_discovery_requires_model_or_distinctive_data(model_data, readings, supported):
+    """An empty, incidental or ambiguous data block is not a model identifier."""
+    sensor = {"id": "synthetic-sensor", "airQuality": readings, **model_data}
+    snapshot = snapshot_from_bootstrap(
+        {"nvr": {"id": "synthetic-console"}, "sensors": [sensor]}
+    )
+    assert bool(snapshot.devices) is supported
+
+
 def test_snapshot_rejects_invalid_bootstrap() -> None:
     """Verify snapshot rejects invalid bootstrap."""
     with pytest.raises(ProtectProtocolError):
